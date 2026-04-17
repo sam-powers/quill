@@ -1,51 +1,219 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { Editor as TiptapEditor } from '@tiptap/react';
+import QuillEditor from './components/Editor';
+import type { EditorRef, SelectionInfo } from './components/Editor';
+import Toolbar from './components/Toolbar';
+import Footer from './components/Footer';
+import CommentLayer from './components/CommentLayer';
+import { useFileManager } from './hooks/useFileManager';
+import { useComments } from './hooks/useComments';
+import { useSuggestions } from './hooks/useSuggestions';
+import type { SidecarFile } from './types';
+import './App.css';
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+const AUTHOR = 'Anonymous';
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+export default function App() {
+  const [editor, setEditor] = useState<TiptapEditor | null>(null);
+  const editorRef = useRef<EditorRef>(null);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null);
+  const [pendingCommentSelection, setPendingCommentSelection] = useState<SelectionInfo | null>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const commentLayerRef = useRef<HTMLDivElement>(null);
+  const [editorKey] = useState(0);
+
+  const { filePath, isDirty, markDirty, openFile, saveFile, saveFileAs, newFile } =
+    useFileManager();
+  const { comments, setComments, addComment, addReply, resolveComment, unresolveComment, deleteComment } =
+    useComments();
+  const { suggestions, setSuggestions, acceptAllSuggestions, rejectAllSuggestions } =
+    useSuggestions();
+
+  // Update macOS title bar dirty indicator
+  useEffect(() => {
+    const name = filePath ? filePath.split('/').pop() ?? 'Untitled' : 'Untitled';
+    document.title = isDirty ? `${name} •` : name;
+  }, [filePath, isDirty]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      const meta = e.metaKey || e.ctrlKey;
+      if (!meta) return;
+
+      if (e.key === 's' && e.shiftKey) {
+        e.preventDefault();
+        handleSaveAs();
+        return;
+      }
+      if (e.key === 's') {
+        e.preventDefault();
+        handleSave();
+        return;
+      }
+      if (e.key === 'o') {
+        e.preventDefault();
+        handleOpen();
+        return;
+      }
+      if (e.key === 'n') {
+        e.preventDefault();
+        handleNew();
+        return;
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  function getMarkdown(): string {
+    return editorRef.current?.getMarkdown() ?? '';
   }
 
+  async function handleSave() {
+    if (!filePath) {
+      await handleSaveAs();
+      return;
+    }
+    await saveFile(getMarkdown(), comments, suggestions);
+  }
+
+  async function handleSaveAs() {
+    await saveFileAs(getMarkdown(), comments, suggestions);
+  }
+
+  async function handleOpen() {
+    const result = await openFile();
+    if (!result) return;
+    loadFileResult(result);
+  }
+
+  function loadFileResult(result: { content: string; sidecar: SidecarFile; filePath: string }) {
+    editorRef.current?.setContent(result.content);
+    setComments(result.sidecar.comments ?? []);
+    setSuggestions(result.sidecar.suggestions ?? []);
+  }
+
+  function handleNew() {
+    newFile();
+    editorRef.current?.setContent('');
+    setComments([]);
+    setSuggestions([]);
+  }
+
+  function handleToggleSuggesting() {
+    setIsSuggesting((v) => !v);
+  }
+
+  function handleAcceptAll() {
+    editor?.commands.acceptAllChanges();
+    acceptAllSuggestions();
+  }
+
+  function handleRejectAll() {
+    editor?.commands.rejectAllChanges();
+    rejectAllSuggestions();
+  }
+
+  const handleAddComment = useCallback(
+    (text: string) => {
+      const sel = pendingCommentSelection ?? selectionInfo;
+      if (!sel || !editor) return;
+      const { from, to, text: anchorText } = sel;
+      const comment = addComment(anchorText, from, to, AUTHOR);
+      // Apply comment mark
+      editor
+        .chain()
+        .focus()
+        .setTextSelection({ from, to })
+        .setComment(comment.id)
+        .run();
+      // Add the initial "comment body" as the first reply if user typed text
+      if (text) {
+        // The comment has no body field — treat the text as the first reply
+        setTimeout(() => {
+          addReply(comment.id, text, AUTHOR);
+        }, 0);
+      }
+      setActiveCommentId(comment.id);
+      setPendingCommentSelection(null);
+      setSelectionInfo(null);
+    },
+    [pendingCommentSelection, selectionInfo, editor, addComment, addReply],
+  );
+
+  const handleSelectionChange = useCallback((info: SelectionInfo | null) => {
+    setSelectionInfo(info);
+    if (info) setPendingCommentSelection(info);
+  }, []);
+
+  const handleDeleteComment = useCallback(
+    (commentId: string) => {
+      deleteComment(commentId);
+      editor?.commands.unsetComment(commentId);
+      if (activeCommentId === commentId) setActiveCommentId(null);
+    },
+    [deleteComment, editor, activeCommentId],
+  );
+
+  const handleActivateComment = useCallback(
+    (commentId: string) => {
+      setActiveCommentId((prev) => (prev === commentId ? null : commentId));
+      // Scroll the anchor into view
+      if (editor) {
+        const dom = editor.view.dom.querySelector(`[data-comment-id="${commentId}"]`);
+        dom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    },
+    [editor],
+  );
+
+  // Re-anchor comments after content loads by fuzzy-matching anchorText
+  // (basic implementation: positions from sidecar are trusted on first load)
+
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="app">
+      <Toolbar
+        editor={editor}
+        isSuggesting={isSuggesting}
+        onToggleSuggesting={handleToggleSuggesting}
+        onAcceptAll={handleAcceptAll}
+        onRejectAll={handleRejectAll}
+      />
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+      <div className="workspace" ref={scrollAreaRef}>
+        <div className="editor-scroll-area">
+          <QuillEditor
+            key={editorKey}
+            ref={editorRef}
+            initialContent=""
+            isSuggesting={isSuggesting}
+            authorID={AUTHOR}
+            onUpdate={markDirty}
+            onSelectionChange={handleSelectionChange}
+            onEditorReady={setEditor}
+          />
+        </div>
 
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
+        <CommentLayer
+          editor={editor}
+          comments={comments}
+          activeCommentId={activeCommentId}
+          selectionInfo={selectionInfo}
+          author={AUTHOR}
+          containerRef={commentLayerRef}
+          onAddComment={handleAddComment}
+          onReply={(id, text) => addReply(id, text, AUTHOR)}
+          onResolve={resolveComment}
+          onUnresolve={unresolveComment}
+          onDelete={handleDeleteComment}
+          onActivate={handleActivateComment}
         />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      </div>
+
+      <Footer editor={editor} filePath={filePath} isSuggesting={isSuggesting} />
+    </div>
   );
 }
-
-export default App;
