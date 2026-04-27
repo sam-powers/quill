@@ -47,6 +47,7 @@ export interface TrackedChangeInfo {
   operation: 'insert' | 'delete';
   from: number;
   to: number;
+  text: string;
   authorID: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;

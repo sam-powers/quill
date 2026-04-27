@@ -47,6 +47,11 @@ export const TrackedInsert = Mark.create({
           'data-tracked': JSON.stringify(attrs.dataTracked),
         }),
       },
+      changeId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-change-id'),
+        renderHTML: (attrs) => (attrs.changeId ? { 'data-change-id': attrs.changeId } : {}),
+      },
     };
   },
 
@@ -79,6 +84,11 @@ export const TrackedDelete = Mark.create({
         renderHTML: (attrs) => ({
           'data-tracked': JSON.stringify(attrs.dataTracked),
         }),
+      },
+      changeId: {
+        default: null,
+        parseHTML: (el) => el.getAttribute('data-change-id'),
+        renderHTML: (attrs) => (attrs.changeId ? { 'data-change-id': attrs.changeId } : {}),
       },
     };
   },
@@ -325,6 +335,7 @@ export function getTrackedChanges(editor: { state: { doc: any; schema: any } }):
             operation,
             from: pos,
             to: pos + node.nodeSize,
+            text: node.textContent ?? '',
             authorID,
             status,
             createdAt,
@@ -332,6 +343,7 @@ export function getTrackedChanges(editor: { state: { doc: any; schema: any } }):
         } else {
           const existing = changes.get(id)!;
           existing.to = Math.max(existing.to, pos + node.nodeSize);
+          existing.text += node.textContent ?? '';
         }
       }
     });
@@ -383,25 +395,67 @@ function transformForTracking(
     };
 
     if (hasDelete) {
-      // Mark the range for deletion rather than deleting it
-      newTr.addMark(
-        from,
-        to,
-        deleteType.create({ dataTracked: { ...dataTrackedBase, operation: 'delete' } }),
-      );
-      // We kept the deleted text, so future positions are offset by (to - from)
-      offset += to - from;
+      // Split the deletion range into tracked-insert sub-ranges (just delete them)
+      // and normal sub-ranges (mark as tracked_delete and keep visible).
+      const insertRanges: Array<{ from: number; to: number }> = [];
+      const normalRanges: Array<{ from: number; to: number }> = [];
+
+      state.doc.nodesBetween(rs.from, rs.to, (node, pos) => {
+        if (!node.isText) return;
+        const nodeFrom = Math.max(pos, rs.from);
+        const nodeTo = Math.min(pos + node.nodeSize, rs.to);
+        if (nodeFrom >= nodeTo) return;
+        const hasPendingInsert = node.marks.some(
+          (m) => m.type === insertType && m.attrs.dataTracked?.status === 'pending',
+        );
+        if (hasPendingInsert) {
+          insertRanges.push({ from: nodeFrom + offset, to: nodeTo + offset });
+        } else {
+          normalRanges.push({ from: nodeFrom + offset, to: nodeTo + offset });
+        }
+      });
+
+      // Apply tracked_delete marks to normal ranges (doesn't change doc size)
+      for (const r of normalRanges) {
+        newTr.addMark(
+          r.from,
+          r.to,
+          deleteType.create({ dataTracked: { ...dataTrackedBase, operation: 'delete' }, changeId: id }),
+        );
+      }
+
+      // Actually delete tracked-insert ranges in reverse order (preserves positions)
+      insertRanges.sort((a, b) => b.from - a.from);
+      for (const r of insertRanges) {
+        newTr.delete(r.from, r.to);
+      }
+
+      // Offset grows only by the normal (kept) text; insert ranges were truly deleted
+      const normalSize = normalRanges.reduce((sum, r) => sum + (r.to - r.from), 0);
+
+      if (insertRanges.length === 0 && normalRanges.length === 0) {
+        // No text nodes found (e.g. deleting a block boundary) — mark whole range as before
+        newTr.addMark(
+          from,
+          to,
+          deleteType.create({ dataTracked: { ...dataTrackedBase, operation: 'delete' }, changeId: id }),
+        );
+        offset += to - from;
+      } else {
+        offset += normalSize;
+      }
     }
 
     if (hasInsert) {
-      // Insert at the position AFTER the kept deleted range
-      const insertAt = to; // `to` already includes the kept deletion range
+      // After the hasDelete block, offset = offset_before + normalSize,
+      // so rs.from + offset == from + normalSize == position after all kept (marked) text.
+      const insertAt = rs.from + offset;
       newTr.insert(insertAt, slice.content);
       const insertEnd = insertAt + slice.content.size;
       newTr.addMark(
         insertAt,
         insertEnd,
-        insertType.create({ dataTracked: { ...dataTrackedBase, operation: 'insert' } }),
+        insertType.create({ dataTracked: { ...dataTrackedBase, operation: 'insert' }, changeId: id }),
       );
     }
   }

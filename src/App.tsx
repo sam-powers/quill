@@ -8,7 +8,8 @@ import CommentLayer from './components/CommentLayer';
 import { useFileManager } from './hooks/useFileManager';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
-import type { SidecarFile } from './types';
+import { getTrackedChanges } from './extensions/TrackChanges';
+import type { SidecarFile, TrackedChangeInfo } from './types';
 import './App.css';
 
 const AUTHOR = 'Anonymous';
@@ -24,11 +25,13 @@ export default function App() {
   const commentLayerRef = useRef<HTMLDivElement>(null);
   const [editorKey] = useState(0);
 
+  const [trackedChanges, setTrackedChanges] = useState<TrackedChangeInfo[]>([]);
+
   const { filePath, isDirty, markDirty, openFile, saveFile, saveFileAs, newFile } =
     useFileManager();
   const { comments, setComments, addComment, addReply, resolveComment, unresolveComment, deleteComment } =
     useComments();
-  const { suggestions, setSuggestions, acceptAllSuggestions, rejectAllSuggestions } =
+  const { suggestions, setSuggestions } =
     useSuggestions();
 
   // Update macOS title bar dirty indicator
@@ -103,19 +106,33 @@ export default function App() {
     setSuggestions([]);
   }
 
+  useEffect(() => {
+    if (!editor) return;
+    const refresh = () => setTrackedChanges(getTrackedChanges(editor));
+    editor.on('update', refresh);
+    refresh();
+    return () => editor.off('update', refresh);
+  }, [editor]);
+
   function handleToggleSuggesting() {
     setIsSuggesting((v) => !v);
   }
 
   function handleAcceptAll() {
     editor?.commands.acceptAllChanges();
-    acceptAllSuggestions();
   }
 
   function handleRejectAll() {
     editor?.commands.rejectAllChanges();
-    rejectAllSuggestions();
   }
+
+  const handleAcceptChange = useCallback((id: string) => {
+    editor?.commands.acceptChange(id);
+  }, [editor]);
+
+  const handleRejectChange = useCallback((id: string) => {
+    editor?.commands.rejectChange(id);
+  }, [editor]);
 
   const handleAddComment = useCallback(
     (text: string) => {
@@ -204,12 +221,16 @@ export default function App() {
           selectionInfo={selectionInfo}
           author={AUTHOR}
           containerRef={commentLayerRef}
+          trackedChanges={trackedChanges}
+          isSuggesting={isSuggesting}
           onAddComment={handleAddComment}
           onReply={(id, text) => addReply(id, text, AUTHOR)}
           onResolve={resolveComment}
           onUnresolve={unresolveComment}
           onDelete={handleDeleteComment}
           onActivate={handleActivateComment}
+          onAcceptChange={handleAcceptChange}
+          onRejectChange={handleRejectChange}
         />
       </div>
 
