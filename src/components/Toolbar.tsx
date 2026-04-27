@@ -1,4 +1,5 @@
 import type { Editor } from '@tiptap/react';
+import type { AuthUser } from '../types';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -6,6 +7,12 @@ interface ToolbarProps {
   onToggleSuggesting: () => void;
   onAcceptAll: () => void;
   onRejectAll: () => void;
+  user: AuthUser | null;
+  cloudId: string | null;
+  syncing: boolean;
+  onShare: () => void;
+  onSignIn: () => void;
+  onSignOut: () => void;
 }
 
 interface ButtonProps {
@@ -33,12 +40,37 @@ function Divider() {
   return <span className="toolbar-divider" />;
 }
 
+function UserAvatar({ user, onSignOut }: { user: AuthUser; onSignOut: () => void }) {
+  const initials = user.displayName
+    .split(' ')
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  return (
+    <div className="user-avatar-wrapper" title={`Signed in as ${user.email}\nClick to sign out`} onClick={onSignOut}>
+      {user.avatarUrl ? (
+        <img className="user-avatar-img" src={user.avatarUrl} alt={user.displayName} referrerPolicy="no-referrer" />
+      ) : (
+        <div className="user-avatar-initials">{initials}</div>
+      )}
+    </div>
+  );
+}
+
 export default function Toolbar({
   editor,
   isSuggesting,
   onToggleSuggesting,
   onAcceptAll,
   onRejectAll,
+  user,
+  cloudId,
+  syncing,
+  onShare,
+  onSignIn,
+  onSignOut,
 }: ToolbarProps) {
   if (!editor) return <div className="toolbar" />;
 
@@ -151,6 +183,30 @@ export default function Toolbar({
       >
         ✏ {isSuggesting ? 'Suggesting' : 'Editing'}
       </ToolbarButton>
+
+      <Divider />
+
+      <ToolbarButton
+        onClick={onShare}
+        disabled={syncing}
+        title={
+          !user
+            ? 'Sign in to share'
+            : !cloudId
+            ? 'Upload to cloud and share'
+            : 'Share document'
+        }
+      >
+        {syncing ? '↑ Syncing…' : cloudId ? '↑ Share' : '↑ Share'}
+      </ToolbarButton>
+
+      {user ? (
+        <UserAvatar user={user} onSignOut={onSignOut} />
+      ) : (
+        <ToolbarButton onClick={onSignIn} title="Sign in with Google">
+          Sign in
+        </ToolbarButton>
+      )}
     </div>
   );
 }

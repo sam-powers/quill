@@ -5,14 +5,15 @@ import type { EditorRef, SelectionInfo } from './components/Editor';
 import Toolbar from './components/Toolbar';
 import Footer from './components/Footer';
 import CommentLayer from './components/CommentLayer';
+import ShareDialog from './components/ShareDialog';
 import { useFileManager } from './hooks/useFileManager';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
+import { useAuth } from './hooks/useAuth';
+import { useCloudDocument } from './hooks/useCloudDocument';
 import { getTrackedChanges } from './extensions/TrackChanges';
 import type { SidecarFile, TrackedChangeInfo } from './types';
 import './App.css';
-
-const AUTHOR = 'Anonymous';
 
 export default function App() {
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
@@ -24,6 +25,7 @@ export default function App() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const commentLayerRef = useRef<HTMLDivElement>(null);
   const [editorKey] = useState(0);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   const [trackedChanges, setTrackedChanges] = useState<TrackedChangeInfo[]>([]);
 
@@ -33,6 +35,16 @@ export default function App() {
     useComments();
   const { suggestions, setSuggestions } =
     useSuggestions();
+
+  const { user, signInWithGoogle, signOut } = useAuth();
+  const { cloudId, syncing, loadCloudId, uploadDocument } = useCloudDocument(user);
+
+  const AUTHOR = user?.displayName ?? user?.email ?? 'Anonymous';
+
+  // Load cloud ID whenever file path changes
+  useEffect(() => {
+    loadCloudId(filePath);
+  }, [filePath]);
 
   // Update macOS title bar dirty indicator
   useEffect(() => {
@@ -81,6 +93,10 @@ export default function App() {
       return;
     }
     await saveFile(getMarkdown(), comments, suggestions);
+    // Sync to cloud if this document is already linked
+    if (user && cloudId) {
+      await uploadDocument(filePath, getMarkdown(), comments, suggestions);
+    }
   }
 
   async function handleSaveAs() {
@@ -106,12 +122,26 @@ export default function App() {
     setSuggestions([]);
   }
 
+  async function handleShare() {
+    if (!user) {
+      await signInWithGoogle();
+      return;
+    }
+    if (!cloudId) {
+      // Upload document to cloud first, then open share dialog
+      const id = await uploadDocument(filePath, getMarkdown(), comments, suggestions);
+      if (id) setShowShareDialog(true);
+    } else {
+      setShowShareDialog(true);
+    }
+  }
+
   useEffect(() => {
     if (!editor) return;
     const refresh = () => setTrackedChanges(getTrackedChanges(editor));
     editor.on('update', refresh);
     refresh();
-    return () => editor.off('update', refresh);
+    return () => { editor.off('update', refresh); };
   }, [editor]);
 
   function handleToggleSuggesting() {
@@ -158,7 +188,7 @@ export default function App() {
       setPendingCommentSelection(null);
       setSelectionInfo(null);
     },
-    [pendingCommentSelection, selectionInfo, editor, addComment, addReply],
+    [pendingCommentSelection, selectionInfo, editor, addComment, addReply, AUTHOR],
   );
 
   const handleSelectionChange = useCallback((info: SelectionInfo | null) => {
@@ -198,6 +228,12 @@ export default function App() {
         onToggleSuggesting={handleToggleSuggesting}
         onAcceptAll={handleAcceptAll}
         onRejectAll={handleRejectAll}
+        user={user}
+        cloudId={cloudId}
+        syncing={syncing}
+        onShare={handleShare}
+        onSignIn={signInWithGoogle}
+        onSignOut={signOut}
       />
 
       <div className="workspace" ref={scrollAreaRef}>
@@ -235,6 +271,10 @@ export default function App() {
       </div>
 
       <Footer editor={editor} filePath={filePath} isSuggesting={isSuggesting} />
+
+      {showShareDialog && cloudId && (
+        <ShareDialog cloudId={cloudId} onClose={() => setShowShareDialog(false)} />
+      )}
     </div>
   );
 }
