@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import type { Editor } from '@tiptap/react';
-import { toolbarSelectionStore } from './Editor';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -24,7 +23,8 @@ function ToolbarButton({ onClick, active, disabled, title, children, className }
     <button
       data-toolbar-button
       className={`toolbar-btn${active ? ' active' : ''}${disabled ? ' disabled' : ''}${className ? ` ${className}` : ''}`}
-      onClick={() => {
+      onMouseDown={(e) => {
+        e.preventDefault(); // keep editor focus so selection is never lost
         if (!disabled) onClick();
       }}
       disabled={disabled}
@@ -140,60 +140,36 @@ export default function Toolbar({
     };
   }, [editor]);
 
-  const live = toolbarSelectionStore.liveEditor ?? editor;
-
-  function run(withSel: (e: import('@tiptap/react').Editor, from: number, to: number) => void, withoutSel: (e: import('@tiptap/react').Editor) => void) {
-    const sel = toolbarSelectionStore.value;
-    toolbarSelectionStore.value = null;
-    const e = sel?.editor ?? live ?? editor!;
-    if (sel) {
-      withSel(e, sel.from, sel.to);
-    } else {
-      e.commands.focus();
-      withoutSel(e);
-    }
-  }
+  const e = editor;
 
   if (!editor) return <div className="toolbar" />;
 
   return (
     <div className="toolbar">
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleItalic().run(),
-          (e) => e.chain().focus().toggleItalic().run(),
-        )}
-        active={live?.isActive('italic') ?? false}
+        onClick={() => e!.chain().focus().toggleItalic().run()}
+        active={e?.isActive('italic') ?? false}
         title="Italic (Cmd+I)"
       >
         <ItalicIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleBold().run(),
-          (e) => e.chain().focus().toggleBold().run(),
-        )}
-        active={live?.isActive('bold') ?? false}
+        onClick={() => e!.chain().focus().toggleBold().run()}
+        active={e?.isActive('bold') ?? false}
         title="Bold (Cmd+B)"
       >
         <BoldIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleUnderline().run(),
-          (e) => e.chain().focus().toggleUnderline().run(),
-        )}
-        active={live?.isActive('underline') ?? false}
+        onClick={() => e!.chain().focus().toggleUnderline().run()}
+        active={e?.isActive('underline') ?? false}
         title="Underline (Cmd+U)"
       >
         <UnderlineIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleStrike().run(),
-          (e) => e.chain().focus().toggleStrike().run(),
-        )}
-        active={live?.isActive('strike') ?? false}
+        onClick={() => e!.chain().focus().toggleStrike().run()}
+        active={e?.isActive('strike') ?? false}
         title="Strikethrough"
       >
         <StrikeIcon />
@@ -202,21 +178,15 @@ export default function Toolbar({
       <Divider />
 
       <ToolbarButton
-        onClick={() => run(
-          (e) => e.chain().undo().run(),
-          (e) => e.chain().undo().run(),
-        )}
-        disabled={!(live ?? editor).can().undo()}
+        onClick={() => e!.chain().focus().undo().run()}
+        disabled={!e?.can().undo()}
         title="Undo (Cmd+Z)"
       >
         <UndoIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e) => e.chain().redo().run(),
-          (e) => e.chain().redo().run(),
-        )}
-        disabled={!(live ?? editor).can().redo()}
+        onClick={() => e!.chain().focus().redo().run()}
+        disabled={!e?.can().redo()}
         title="Redo (Cmd+Shift+Z)"
       >
         <RedoIcon />
@@ -225,31 +195,22 @@ export default function Toolbar({
       <Divider />
 
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleHeading({ level: 1 }).run(),
-          (e) => e.chain().focus().toggleHeading({ level: 1 }).run(),
-        )}
-        active={live?.isActive('heading', { level: 1 }) ?? false}
+        onClick={() => e!.chain().focus().toggleHeading({ level: 1 }).run()}
+        active={e?.isActive('heading', { level: 1 }) ?? false}
         title="Heading 1"
       >
         H1
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleHeading({ level: 2 }).run(),
-          (e) => e.chain().focus().toggleHeading({ level: 2 }).run(),
-        )}
-        active={live?.isActive('heading', { level: 2 }) ?? false}
+        onClick={() => e!.chain().focus().toggleHeading({ level: 2 }).run()}
+        active={e?.isActive('heading', { level: 2 }) ?? false}
         title="Heading 2"
       >
         H2
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleHeading({ level: 3 }).run(),
-          (e) => e.chain().focus().toggleHeading({ level: 3 }).run(),
-        )}
-        active={live?.isActive('heading', { level: 3 }) ?? false}
+        onClick={() => e!.chain().focus().toggleHeading({ level: 3 }).run()}
+        active={e?.isActive('heading', { level: 3 }) ?? false}
         title="Heading 3"
       >
         H3
@@ -258,41 +219,29 @@ export default function Toolbar({
       <Divider />
 
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleBulletList().run(),
-          (e) => e.chain().focus().toggleBulletList().run(),
-        )}
-        active={live?.isActive('bulletList') ?? false}
+        onClick={() => e!.chain().focus().toggleBulletList().run()}
+        active={e?.isActive('bulletList') ?? false}
         title="Bullet list"
       >
         <BulletIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleOrderedList().run(),
-          (e) => e.chain().focus().toggleOrderedList().run(),
-        )}
-        active={live?.isActive('orderedList') ?? false}
+        onClick={() => e!.chain().focus().toggleOrderedList().run()}
+        active={e?.isActive('orderedList') ?? false}
         title="Numbered list"
       >
         <NumberedIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleBlockquote().run(),
-          (e) => e.chain().focus().toggleBlockquote().run(),
-        )}
-        active={live?.isActive('blockquote') ?? false}
+        onClick={() => e!.chain().focus().toggleBlockquote().run()}
+        active={e?.isActive('blockquote') ?? false}
         title="Blockquote"
       >
         <BlockquoteIcon />
       </ToolbarButton>
       <ToolbarButton
-        onClick={() => run(
-          (e, f, t) => e.chain().setTextSelection({ from: f, to: t }).toggleCode().run(),
-          (e) => e.chain().focus().toggleCode().run(),
-        )}
-        active={live?.isActive('code') ?? false}
+        onClick={() => e!.chain().focus().toggleCode().run()}
+        active={e?.isActive('code') ?? false}
         title="Inline code"
       >
         <CodeIcon />
