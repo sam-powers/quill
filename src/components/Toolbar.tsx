@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Editor } from '@tiptap/react';
+import { toolbarSelectionStore } from './Editor';
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -7,6 +8,32 @@ interface ToolbarProps {
   onToggleSuggesting: () => void;
   onAcceptAll: () => void;
   onRejectAll: () => void;
+  hasPendingChanges: boolean;
+}
+
+type ThemeId = 'sage' | 'warm' | 'cool' | 'earth';
+
+interface ThemeDef {
+  id: ThemeId;
+  label: string;
+  // Three swatch colors that mirror what the theme actually does:
+  // page background, accent, and ink. Pulled from the CSS palette in App.css.
+  swatches: [string, string, string];
+}
+
+const THEMES: ThemeDef[] = [
+  { id: 'sage',  label: 'Sage',                swatches: ['#B8C2BA', '#5C7A62', '#222722'] },
+  { id: 'warm',  label: 'Mocha · Dragonfly',   swatches: ['#C9BFAE', '#6B8682', '#2C3438'] },
+  { id: 'cool',  label: 'Watery · Adirondack', swatches: ['#BFCED1', '#4F6B82', '#1F2A36'] },
+  { id: 'earth', label: 'Rodeo · Ecological',  swatches: ['#C2A988', '#7A8466', '#3A2A1F'] },
+];
+
+const THEME_STORAGE_KEY = 'quill-theme';
+
+function applyTheme(id: ThemeId) {
+  const root = document.documentElement;
+  for (const t of THEMES) root.classList.remove(`theme-${t.id}`);
+  root.classList.add(`theme-${id}`);
 }
 
 interface ButtonProps {
@@ -25,7 +52,23 @@ function ToolbarButton({ onClick, active, disabled, title, children, className }
       className={`toolbar-btn${active ? ' active' : ''}${disabled ? ' disabled' : ''}${className ? ` ${className}` : ''}`}
       onMouseDown={(e) => {
         e.preventDefault(); // keep editor focus so selection is never lost
+        const ed = toolbarSelectionStore.liveEditor;
+        if (ed) {
+          const { from, to } = ed.state.selection;
+          if (from !== to) toolbarSelectionStore.value = { from, to, editor: ed };
+        }
         if (!disabled) onClick();
+        // Restore selection after the command runs so the DOM selection
+        // still covers the formatted range (toggleBold etc. can collapse it).
+        if (ed && toolbarSelectionStore.value) {
+          const { from, to } = toolbarSelectionStore.value;
+          try {
+            ed.chain().focus().setTextSelection({ from, to }).run();
+          } catch {
+            // ignore
+          }
+        }
+        toolbarSelectionStore.value = null;
       }}
       disabled={disabled}
       title={title}
@@ -120,12 +163,113 @@ const RedoIcon = () => (
   </svg>
 );
 
+function ThemeSwatchGroup({ swatches }: { swatches: [string, string, string] }) {
+  return (
+    <span className="theme-swatch-group" aria-hidden="true">
+      {swatches.map((color, i) => (
+        <span key={i} className="theme-swatch-dot" style={{ background: color }} />
+      ))}
+    </span>
+  );
+}
+
+function ToggleSwitch({
+  on,
+  onChange,
+  labelOn,
+  labelOff,
+  title,
+}: {
+  on: boolean;
+  onChange: () => void;
+  labelOn: string;
+  labelOff: string;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      className={`mode-switch${on ? ' on' : ''}`}
+      onClick={onChange}
+      title={title}
+    >
+      <span className="mode-switch-track">
+        <span className="mode-switch-thumb" />
+      </span>
+      <span className="mode-switch-label">{on ? labelOn : labelOff}</span>
+    </button>
+  );
+}
+
+function ThemeSelector() {
+  const [theme, setTheme] = useState<ThemeId>(() => {
+    if (typeof window === 'undefined') return 'sage';
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeId | null;
+    return stored && THEMES.some((t) => t.id === stored) ? stored : 'sage';
+  });
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    applyTheme(theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target instanceof Element)) return;
+      if (!e.target.closest('.theme-selector')) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const current = THEMES.find((t) => t.id === theme) ?? THEMES[0];
+
+  return (
+    <div className="theme-selector">
+      <button
+        className="theme-selector-trigger"
+        title="Change theme"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <ThemeSwatchGroup swatches={current.swatches} />
+        <span className="theme-label">{current.label}</span>
+        <span className="theme-caret">▾</span>
+      </button>
+      {open && (
+        <div className="theme-selector-menu">
+          {THEMES.map((t) => (
+            <button
+              key={t.id}
+              className={`theme-selector-item${t.id === theme ? ' active' : ''}`}
+              onClick={() => {
+                setTheme(t.id);
+                setOpen(false);
+              }}
+            >
+              <ThemeSwatchGroup swatches={t.swatches} />
+              <span className="theme-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Toolbar({
   editor,
   isSuggesting,
   onToggleSuggesting,
   onAcceptAll,
   onRejectAll,
+  hasPendingChanges,
 }: ToolbarProps) {
   const [, forceUpdate] = useState(0);
 
@@ -249,9 +393,17 @@ export default function Toolbar({
 
       <Divider />
 
+      <ToggleSwitch
+        on={isSuggesting}
+        onChange={onToggleSuggesting}
+        labelOn="Suggesting"
+        labelOff="Editing"
+        title={isSuggesting ? 'Switch to Editing mode' : 'Switch to Suggesting mode'}
+      />
+
       <div className="toolbar-spacer" />
 
-      {isSuggesting && (
+      {hasPendingChanges && (
         <>
           <ToolbarButton onClick={onAcceptAll} title="Accept all suggestions" className="toolbar-btn-accept">
             ✓ Accept All
@@ -263,15 +415,7 @@ export default function Toolbar({
         </>
       )}
 
-      <div
-        className="editing-badge"
-        onClick={onToggleSuggesting}
-        title={isSuggesting ? 'Exit suggesting mode' : 'Enable suggesting mode'}
-        style={{ cursor: 'pointer' }}
-      >
-        <div className="editing-dot" />
-        {isSuggesting ? 'Suggesting' : 'Editing'}
-      </div>
+      <ThemeSelector />
     </div>
   );
 }

@@ -226,6 +226,7 @@ export default function App() {
         onToggleSuggesting={handleToggleSuggesting}
         onAcceptAll={handleAcceptAll}
         onRejectAll={handleRejectAll}
+        hasPendingChanges={trackedChanges.some((c) => c.status === 'pending')}
       />
 
       <div className="workspace" ref={scrollAreaRef}>
@@ -271,7 +272,6 @@ export default function App() {
           activeCommentId={activeCommentId}
           containerRef={commentLayerRef}
           trackedChanges={trackedChanges}
-          isSuggesting={isSuggesting}
           onReply={(id, text) => addReply(id, text, AUTHOR)}
           onResolve={resolveComment}
           onUnresolve={unresolveComment}

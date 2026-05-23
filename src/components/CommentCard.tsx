@@ -60,6 +60,7 @@ export default function CommentCard({
     <div
       className={`comment-card${isActive ? ' comment-card-active' : ''}${comment.resolved ? ' comment-card-resolved' : ''}`}
       style={{ top }}
+      data-card-id={comment.id}
       onClick={() => onClick(comment.id)}
     >
       <div className="comment-thread-line" />

@@ -23,8 +23,9 @@ export default function SuggestionCard({ change, top, onAccept, onReject }: Sugg
 
   return (
     <div
-      className={`comment-card suggestion-card ${isInsert ? 'suggestion-card-insert' : 'suggestion-card-delete'}`}
+      className={`suggestion-card ${isInsert ? 'suggestion-card-insert' : 'suggestion-card-delete'}`}
       style={{ top }}
+      data-card-id={change.id}
     >
       <div className="comment-thread-line" />
 

@@ -10,7 +10,6 @@ interface CommentLayerProps {
   activeCommentId: string | null;
   containerRef: React.RefObject<HTMLDivElement | null>;
   trackedChanges: TrackedChangeInfo[];
-  isSuggesting: boolean;
   onReply: (commentId: string, text: string) => void;
   onResolve: (commentId: string) => void;
   onUnresolve: (commentId: string) => void;
@@ -30,7 +29,7 @@ interface CardPosition {
 const CARD_HEIGHT_ESTIMATE = 120;
 const CARD_GAP = 8;
 
-function stackCards(cards: CardPosition[]): CardPosition[] {
+function stackCards(cards: CardPosition[], heightFor: (id: string) => number): CardPosition[] {
   if (cards.length === 0) return cards;
 
   const sorted = [...cards].sort((a, b) => a.rawTop - b.rawTop);
@@ -40,7 +39,7 @@ function stackCards(cards: CardPosition[]): CardPosition[] {
   for (const card of sorted) {
     const nudgedTop = Math.max(card.rawTop, cursor);
     result.push({ ...card, nudgedTop });
-    cursor = nudgedTop + CARD_HEIGHT_ESTIMATE + CARD_GAP;
+    cursor = nudgedTop + heightFor(card.cardId) + CARD_GAP;
   }
 
   return result;
@@ -82,7 +81,6 @@ export default function CommentLayer({
   activeCommentId,
   containerRef,
   trackedChanges,
-  isSuggesting,
   onReply,
   onResolve,
   onUnresolve,
@@ -93,21 +91,32 @@ export default function CommentLayer({
 }: CommentLayerProps) {
   const [cardPositions, setCardPositions] = useState<CardPosition[]>([]);
   const rafRef = useRef<number>(0);
+  const [showResolved, setShowResolved] = useState(false);
+  const heightsRef = useRef<Map<string, number>>(new Map());
 
   const visibleComments = comments.filter((c) => !c.resolved);
   const resolvedComments = comments.filter((c) => c.resolved);
-  const [showResolved, setShowResolved] = useState(false);
   const displayComments = showResolved ? comments : visibleComments;
 
-  const pendingChanges = isSuggesting ? trackedChanges.filter((c) => c.status === 'pending') : [];
+  const pendingChanges = trackedChanges.filter((c) => c.status === 'pending');
+
+  // Stable refs so reflow's identity doesn't change on every render
+  // (which would otherwise re-run the editor.on effect → setState → loop).
+  const editorRef = useRef(editor);
+  const displayCommentsRef = useRef(displayComments);
+  const pendingChangesRef = useRef(pendingChanges);
+  editorRef.current = editor;
+  displayCommentsRef.current = displayComments;
+  pendingChangesRef.current = pendingChanges;
 
   const reflow = useCallback(() => {
-    if (!editor) return;
+    const ed = editorRef.current;
+    if (!ed) return;
 
     const rawCards: CardPosition[] = [];
 
-    for (const comment of displayComments) {
-      const top = getAnchorTop(editor, comment.id);
+    for (const comment of displayCommentsRef.current) {
+      const top = getAnchorTop(ed, comment.id);
       rawCards.push({
         cardId: comment.id,
         type: 'comment',
@@ -116,8 +125,8 @@ export default function CommentLayer({
       });
     }
 
-    for (const change of pendingChanges) {
-      const top = getChangeAnchorTop(editor, change.id);
+    for (const change of pendingChangesRef.current) {
+      const top = getChangeAnchorTop(ed, change.id);
       rawCards.push({
         cardId: change.id,
         type: 'suggestion',
@@ -126,8 +135,51 @@ export default function CommentLayer({
       });
     }
 
-    setCardPositions(stackCards(rawCards));
-  }, [editor, displayComments, pendingChanges]);
+    setCardPositions((prev) => {
+      const next = stackCards(rawCards, (id) => heightsRef.current.get(id) ?? CARD_HEIGHT_ESTIMATE);
+      if (
+        prev.length === next.length &&
+        prev.every((p, i) => p.cardId === next[i].cardId && p.nudgedTop === next[i].nudgedTop)
+      ) {
+        return prev;
+      }
+      return next;
+    });
+  }, []);
+
+  const containerEl = containerRef.current;
+  useEffect(() => {
+    if (!containerEl) return;
+    const observer = new ResizeObserver(() => {
+      const cards = containerEl.querySelectorAll<HTMLElement>('[data-card-id]');
+      let changed = false;
+      const seen = new Set<string>();
+      cards.forEach((el) => {
+        const id = el.dataset.cardId;
+        if (!id) return;
+        seen.add(id);
+        const h = el.getBoundingClientRect().height;
+        if (heightsRef.current.get(id) !== h) {
+          heightsRef.current.set(id, h);
+          changed = true;
+        }
+      });
+      for (const id of heightsRef.current.keys()) {
+        if (!seen.has(id)) {
+          heightsRef.current.delete(id);
+          changed = true;
+        }
+      }
+      if (changed) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(reflow);
+      }
+    });
+    observer.observe(containerEl);
+    const cards = containerEl.querySelectorAll<HTMLElement>('[data-card-id]');
+    cards.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [containerEl, reflow, cardPositions.length]);
 
   useEffect(() => {
     if (!editor) return;
@@ -148,7 +200,7 @@ export default function CommentLayer({
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(reflow);
-  }, [comments, trackedChanges, reflow]);
+  }, [comments, trackedChanges, showResolved, reflow]);
 
   return (
     <div className="comment-layer" ref={containerRef as React.RefObject<HTMLDivElement>}>

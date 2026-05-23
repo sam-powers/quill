@@ -8,6 +8,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
+import { TextSelection } from '@tiptap/pm/state';
 import { Markdown } from 'tiptap-markdown';
 import { CommentMark } from '../extensions/Comment';
 import { TrackedInsert, TrackedDelete, TrackChanges } from '../extensions/TrackChanges';
@@ -53,7 +54,9 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
     const editor = useEditor({
       extensions: [
         StarterKit.configure({
-          // Disable history to avoid conflicts with our track changes
+          // Don't auto-insert an empty paragraph after non-paragraph blocks
+          // (e.g. headings). It interferes with toggling H1 back to paragraph.
+          trailingNode: false,
         }),
         Underline,
         Link.configure({ openOnClick: false }),
@@ -64,6 +67,24 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
         TrackChanges,
       ],
       content: initialContent,
+      editorProps: {
+        // Chromium in headless mode (and some platforms) doesn't reliably map
+        // Home/End to ProseMirror line navigation. Handle them explicitly so
+        // pressing End collapses a selection to the line end.
+        handleKeyDown(view, event) {
+          if (event.key !== 'Home' && event.key !== 'End') return false;
+          const { state } = view;
+          const $head = state.selection.$head;
+          const blockStart = $head.start($head.depth);
+          const blockEnd = $head.end($head.depth);
+          const target = event.key === 'Home' ? blockStart : blockEnd;
+          // If shift held, extend selection — otherwise collapse to target.
+          const anchor = event.shiftKey ? state.selection.anchor : target;
+          const tr = state.tr.setSelection(TextSelection.create(state.doc, anchor, target));
+          view.dispatch(tr.scrollIntoView());
+          return true;
+        },
+      },
       onUpdate() {
         onUpdateRef.current();
       },
