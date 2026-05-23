@@ -3,6 +3,16 @@ export interface Reply {
   author: string;
   text: string;
   createdAt: string;
+  authorKind?: 'user' | 'ai';
+  pending?: boolean;
+  error?: string;
+}
+
+export interface AISessionBinding {
+  provider: 'claude-code';
+  sessionId: string;
+  cwd: string;
+  linkedAt: string;
 }
 
 export interface Comment {
@@ -32,9 +42,10 @@ export interface Suggestion {
 }
 
 export interface SidecarFile {
-  version: 1;
+  version: 2;
   comments: Comment[];
   suggestions: Suggestion[];
+  aiSession?: AISessionBinding;
 }
 
 export interface FileState {

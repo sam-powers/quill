@@ -5,11 +5,13 @@ import type { EditorRef, SelectionInfo } from './components/Editor';
 import Toolbar from './components/Toolbar';
 import Footer from './components/Footer';
 import CommentLayer from './components/CommentLayer';
+import SessionPicker from './components/SessionPicker';
 import { useFileManager } from './hooks/useFileManager';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
+import { useClaudeReply } from './hooks/useClaudeReply';
 import { getTrackedChanges } from './extensions/TrackChanges';
-import type { SidecarFile, TrackedChangeInfo } from './types';
+import type { AISessionBinding, SidecarFile, TrackedChangeInfo } from './types';
 import './App.css';
 
 const AUTHOR = 'Anonymous';
@@ -26,19 +28,77 @@ export default function App() {
   const [editorKey] = useState(0);
 
   const [trackedChanges, setTrackedChanges] = useState<TrackedChangeInfo[]>([]);
+  const [aiSession, setAISession] = useState<AISessionBinding | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const { filePath, isDirty, markDirty, openFile, saveFile, saveFileAs, newFile } =
     useFileManager();
-  const { comments, setComments, addComment, addReply, resolveComment, unresolveComment, deleteComment } =
-    useComments();
-  const { suggestions, setSuggestions } =
-    useSuggestions();
+  const {
+    comments,
+    setComments,
+    addComment,
+    addReply,
+    resolveComment,
+    unresolveComment,
+    deleteComment,
+    startAIReply,
+    appendAIReplyChunk,
+    finishAIReply,
+    failAIReply,
+  } = useComments();
+  const { suggestions, setSuggestions } = useSuggestions();
+
+  const getDocMarkdown = useCallback(() => editorRef.current?.getMarkdown() ?? '', []);
+  const claudeReply = useClaudeReply({
+    startAIReply,
+    appendAIReplyChunk,
+    finishAIReply,
+    failAIReply,
+    getDocMarkdown,
+  });
 
   // Update macOS title bar dirty indicator
   useEffect(() => {
     const name = filePath ? filePath.split('/').pop() ?? 'Untitled' : 'Untitled';
     document.title = isDirty ? `${name} •` : name;
   }, [filePath, isDirty]);
+
+  function getMarkdown(): string {
+    return editorRef.current?.getMarkdown() ?? '';
+  }
+
+  const handleSaveAs = useCallback(async () => {
+    await saveFileAs(getMarkdown(), comments, suggestions, aiSession);
+  }, [saveFileAs, comments, suggestions, aiSession]);
+
+  const handleSave = useCallback(async () => {
+    if (!filePath) {
+      await handleSaveAs();
+      return;
+    }
+    await saveFile(getMarkdown(), comments, suggestions, aiSession);
+  }, [filePath, saveFile, comments, suggestions, aiSession, handleSaveAs]);
+
+  const handleOpen = useCallback(async () => {
+    const result = await openFile();
+    if (!result) return;
+    loadFileResult(result);
+  }, [openFile]);
+
+  function loadFileResult(result: { content: string; sidecar: SidecarFile; filePath: string }) {
+    editorRef.current?.setContent(result.content);
+    setComments(result.sidecar.comments ?? []);
+    setSuggestions(result.sidecar.suggestions ?? []);
+    setAISession(result.sidecar.aiSession ?? null);
+  }
+
+  const handleNew = useCallback(() => {
+    newFile();
+    editorRef.current?.setContent('');
+    setComments([]);
+    setSuggestions([]);
+    setAISession(null);
+  }, [newFile, setComments, setSuggestions]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -69,49 +129,16 @@ export default function App() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  });
-
-  function getMarkdown(): string {
-    return editorRef.current?.getMarkdown() ?? '';
-  }
-
-  async function handleSave() {
-    if (!filePath) {
-      await handleSaveAs();
-      return;
-    }
-    await saveFile(getMarkdown(), comments, suggestions);
-  }
-
-  async function handleSaveAs() {
-    await saveFileAs(getMarkdown(), comments, suggestions);
-  }
-
-  async function handleOpen() {
-    const result = await openFile();
-    if (!result) return;
-    loadFileResult(result);
-  }
-
-  function loadFileResult(result: { content: string; sidecar: SidecarFile; filePath: string }) {
-    editorRef.current?.setContent(result.content);
-    setComments(result.sidecar.comments ?? []);
-    setSuggestions(result.sidecar.suggestions ?? []);
-  }
-
-  function handleNew() {
-    newFile();
-    editorRef.current?.setContent('');
-    setComments([]);
-    setSuggestions([]);
-  }
+  }, [handleSave, handleSaveAs, handleOpen, handleNew]);
 
   useEffect(() => {
     if (!editor) return;
     const refresh = () => setTrackedChanges(getTrackedChanges(editor));
     editor.on('update', refresh);
     refresh();
-    return () => editor.off('update', refresh);
+    return () => {
+      editor.off('update', refresh);
+    };
   }, [editor]);
 
   function handleToggleSuggesting() {
@@ -187,8 +214,27 @@ export default function App() {
     [editor],
   );
 
-  // Re-anchor comments after content loads by fuzzy-matching anchorText
-  // (basic implementation: positions from sidecar are trusted on first load)
+  const handleAIReplyRequest = useCallback(
+    (commentId: string, userText: string) => {
+      if (!aiSession) return;
+      const comment = comments.find((c) => c.id === commentId);
+      if (!comment) return;
+      // Fire-and-forget; useClaudeReply handles errors via failAIReply.
+      void claudeReply.ask(comment, userText, aiSession);
+    },
+    [aiSession, comments, claudeReply],
+  );
+
+  const handlePickSession = useCallback((binding: AISessionBinding) => {
+    setAISession(binding);
+    setPickerOpen(false);
+    markDirty();
+  }, [markDirty]);
+
+  const handleUnlinkSession = useCallback(() => {
+    setAISession(null);
+    markDirty();
+  }, [markDirty]);
 
   return (
     <div className="app">
@@ -223,8 +269,12 @@ export default function App() {
           containerRef={commentLayerRef}
           trackedChanges={trackedChanges}
           isSuggesting={isSuggesting}
+          aiSession={aiSession}
           onAddComment={handleAddComment}
           onReply={(id, text) => addReply(id, text, AUTHOR)}
+          onAIReplyRequest={handleAIReplyRequest}
+          onCancelAIReply={claudeReply.cancel}
+          onOpenSessionPicker={() => setPickerOpen(true)}
           onResolve={resolveComment}
           onUnresolve={unresolveComment}
           onDelete={handleDeleteComment}
@@ -234,7 +284,20 @@ export default function App() {
         />
       </div>
 
-      <Footer editor={editor} filePath={filePath} isSuggesting={isSuggesting} />
+      <Footer
+        editor={editor}
+        filePath={filePath}
+        isSuggesting={isSuggesting}
+        aiSession={aiSession}
+        onOpenSessionPicker={() => setPickerOpen(true)}
+        onUnlinkSession={handleUnlinkSession}
+      />
+
+      <SessionPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={handlePickSession}
+      />
     </div>
   );
 }
