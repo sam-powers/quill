@@ -1,11 +1,15 @@
 import { useState, useRef } from 'react';
-import type { Comment } from '../types';
+import type { AISessionBinding, Comment, Reply } from '../types';
 
 interface CommentCardProps {
   comment: Comment;
   isActive: boolean;
   top: number;
+  aiSession: AISessionBinding | null;
   onReply: (commentId: string, text: string) => void;
+  onAIReplyRequest: (commentId: string, userText: string) => void;
+  onCancelAIReply: (replyId: string) => void;
+  onOpenSessionPicker: () => void;
   onResolve: (commentId: string) => void;
   onUnresolve: (commentId: string) => void;
   onDelete: (commentId: string) => void;
@@ -23,11 +27,61 @@ function timeAgo(isoDate: string): string {
   return `${days}d ago`;
 }
 
+function ReplyView({
+  reply,
+  onCancel,
+  onRelink,
+}: {
+  reply: Reply;
+  onCancel: () => void;
+  onRelink: () => void;
+}) {
+  const isAI = reply.authorKind === 'ai';
+  return (
+    <div className={`comment-reply${isAI ? ' comment-reply-ai' : ''}`}>
+      <div className="comment-header">
+        <span className="comment-author">
+          {isAI && <span className="ai-badge">AI</span>}
+          {reply.author}
+        </span>
+        <span className="comment-time">{timeAgo(reply.createdAt)}</span>
+      </div>
+      {reply.error ? (
+        <div className="comment-reply-error">
+          <p>{reply.error}</p>
+          <button className="btn-ghost" onClick={onRelink}>
+            Re-link session…
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="comment-reply-text">
+            {reply.text}
+            {reply.pending && reply.text.length === 0 && (
+              <span className="ai-thinking">Claude is thinking…</span>
+            )}
+            {reply.pending && <span className="ai-spinner" aria-hidden="true" />}
+          </p>
+          {reply.pending && (
+            <button className="btn-ghost btn-cancel-ai" onClick={onCancel}>
+              Cancel
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function CommentCard({
   comment,
   isActive,
   top,
+  aiSession,
   onReply,
+  onAIReplyRequest,
+  onCancelAIReply,
+  onOpenSessionPicker,
   onResolve,
   onUnresolve,
   onDelete,
@@ -42,6 +96,9 @@ export default function CommentCard({
     const trimmed = replyText.trim();
     if (!trimmed) return;
     onReply(comment.id, trimmed);
+    if (aiSession && /@claude\b/i.test(trimmed)) {
+      onAIReplyRequest(comment.id, trimmed);
+    }
     setReplyText('');
     setShowReply(false);
   }
@@ -92,11 +149,12 @@ export default function CommentCard({
       <div className="comment-anchor-text">"{comment.anchorText.slice(0, 60)}{comment.anchorText.length > 60 ? '…' : ''}"</div>
 
       {comment.replies.map((reply) => (
-        <div key={reply.id} className="comment-reply">
-          <span className="comment-author">{reply.author}</span>
-          <span className="comment-time">{timeAgo(reply.createdAt)}</span>
-          <p className="comment-reply-text">{reply.text}</p>
-        </div>
+        <ReplyView
+          key={reply.id}
+          reply={reply}
+          onCancel={() => onCancelAIReply(reply.id)}
+          onRelink={onOpenSessionPicker}
+        />
       ))}
 
       {showReply ? (
@@ -107,7 +165,9 @@ export default function CommentCard({
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Reply… (Cmd+Enter to post)"
+            placeholder={
+              aiSession ? 'Reply… (type @claude to ask Claude)' : 'Reply… (Cmd+Enter to post)'
+            }
             rows={2}
             autoFocus
           />

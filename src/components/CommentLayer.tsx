@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/react';
-import type { Comment, TrackedChangeInfo } from '../types';
+import type { AISessionBinding, Comment, TrackedChangeInfo } from '../types';
 import CommentCard from './CommentCard';
 import AddCommentButton from './AddCommentButton';
 import SuggestionCard from './SuggestionCard';
@@ -15,8 +15,12 @@ interface CommentLayerProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   trackedChanges: TrackedChangeInfo[];
   isSuggesting: boolean;
+  aiSession: AISessionBinding | null;
   onAddComment: (text: string) => void;
   onReply: (commentId: string, text: string) => void;
+  onAIReplyRequest: (commentId: string, userText: string) => void;
+  onCancelAIReply: (replyId: string) => void;
+  onOpenSessionPicker: () => void;
   onResolve: (commentId: string) => void;
   onUnresolve: (commentId: string) => void;
   onDelete: (commentId: string) => void;
@@ -90,8 +94,12 @@ export default function CommentLayer({
   containerRef,
   trackedChanges,
   isSuggesting,
+  aiSession,
   onAddComment,
   onReply,
+  onAIReplyRequest,
+  onCancelAIReply,
+  onOpenSessionPicker,
   onResolve,
   onUnresolve,
   onDelete,
@@ -194,7 +202,11 @@ export default function CommentLayer({
             comment={comment}
             isActive={comment.id === activeCommentId}
             top={top}
+            aiSession={aiSession}
             onReply={onReply}
+            onAIReplyRequest={onAIReplyRequest}
+            onCancelAIReply={onCancelAIReply}
+            onOpenSessionPicker={onOpenSessionPicker}
             onResolve={onResolve}
             onUnresolve={onUnresolve}
             onDelete={onDelete}

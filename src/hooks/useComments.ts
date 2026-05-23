@@ -10,6 +10,10 @@ interface UseCommentsReturn {
   resolveComment: (commentId: string) => void;
   unresolveComment: (commentId: string) => void;
   deleteComment: (commentId: string) => void;
+  startAIReply: (commentId: string) => string;
+  appendAIReplyChunk: (commentId: string, replyId: string, chunk: string) => void;
+  finishAIReply: (commentId: string, replyId: string) => void;
+  failAIReply: (commentId: string, replyId: string, message: string) => void;
 }
 
 export function useComments(): UseCommentsReturn {
@@ -39,6 +43,7 @@ export function useComments(): UseCommentsReturn {
       author,
       text,
       createdAt: new Date().toISOString(),
+      authorKind: 'user',
     };
     setComments((prev) =>
       prev.map((c) => (c.id === commentId ? { ...c, replies: [...c.replies, reply] } : c)),
@@ -57,6 +62,70 @@ export function useComments(): UseCommentsReturn {
     setComments((prev) => prev.filter((c) => c.id !== commentId));
   }, []);
 
+  const startAIReply = useCallback((commentId: string): string => {
+    const replyId = uuidv4();
+    const reply: Reply = {
+      id: replyId,
+      author: 'Claude',
+      text: '',
+      createdAt: new Date().toISOString(),
+      authorKind: 'ai',
+      pending: true,
+    };
+    setComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, replies: [...c.replies, reply] } : c)),
+    );
+    return replyId;
+  }, []);
+
+  const appendAIReplyChunk = useCallback(
+    (commentId: string, replyId: string, chunk: string) => {
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? {
+                ...c,
+                replies: c.replies.map((r) =>
+                  r.id === replyId ? { ...r, text: r.text + chunk } : r,
+                ),
+              }
+            : c,
+        ),
+      );
+    },
+    [],
+  );
+
+  const finishAIReply = useCallback((commentId: string, replyId: string) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId ? { ...r, pending: false } : r,
+              ),
+            }
+          : c,
+      ),
+    );
+  }, []);
+
+  const failAIReply = useCallback((commentId: string, replyId: string, message: string) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId ? { ...r, pending: false, error: message } : r,
+              ),
+            }
+          : c,
+      ),
+    );
+  }, []);
+
   return {
     comments,
     setComments,
@@ -65,5 +134,9 @@ export function useComments(): UseCommentsReturn {
     resolveComment,
     unresolveComment,
     deleteComment,
+    startAIReply,
+    appendAIReplyChunk,
+    finishAIReply,
+    failAIReply,
   };
 }

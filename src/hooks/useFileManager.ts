@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import type { SidecarFile, Comment, Suggestion } from '../types';
+import type { SidecarFile, Comment, Suggestion, AISessionBinding } from '../types';
 
 function sidecarPath(filePath: string): string {
   // Strip .md extension if present, append .comments.json
@@ -9,7 +9,17 @@ function sidecarPath(filePath: string): string {
 }
 
 function emptySidecar(): SidecarFile {
-  return { version: 1, comments: [], suggestions: [] };
+  return { version: 2, comments: [], suggestions: [] };
+}
+
+function normalizeSidecar(raw: unknown): SidecarFile {
+  const parsed = raw as Partial<SidecarFile> & { version?: number };
+  return {
+    version: 2,
+    comments: parsed.comments ?? [],
+    suggestions: parsed.suggestions ?? [],
+    aiSession: parsed.aiSession,
+  };
 }
 
 interface UseFileManagerReturn {
@@ -30,12 +40,14 @@ interface UseFileManagerReturn {
     content: string,
     comments: Comment[],
     suggestions: Suggestion[],
+    aiSession: AISessionBinding | null,
     forcePath?: string,
   ) => Promise<string | null>;
   saveFileAs: (
     content: string,
     comments: Comment[],
     suggestions: Suggestion[],
+    aiSession: AISessionBinding | null,
   ) => Promise<string | null>;
   newFile: () => void;
 }
@@ -52,7 +64,7 @@ export function useFileManager(): UseFileManagerReturn {
       let sidecar = emptySidecar();
       try {
         const raw = await invoke<string>('read_file', { path: sidecarPath(path) });
-        sidecar = JSON.parse(raw) as SidecarFile;
+        sidecar = normalizeSidecar(JSON.parse(raw));
       } catch {
         // No sidecar — that's fine
       }
@@ -77,10 +89,14 @@ export function useFileManager(): UseFileManagerReturn {
   }, [openFilePath]);
 
   const saveSidecar = useCallback(
-    async (path: string, comments: Comment[], suggestions: Suggestion[]) => {
-      const sidecar: SidecarFile = { version: 1, comments, suggestions };
+    async (
+      path: string,
+      comments: Comment[],
+      suggestions: Suggestion[],
+      aiSession: AISessionBinding | null,
+    ) => {
       const scPath = sidecarPath(path);
-      if (comments.length === 0 && suggestions.length === 0) {
+      if (comments.length === 0 && suggestions.length === 0 && !aiSession) {
         // Clean up empty sidecar
         try {
           await invoke('delete_file', { path: scPath });
@@ -89,6 +105,12 @@ export function useFileManager(): UseFileManagerReturn {
         }
         return;
       }
+      const sidecar: SidecarFile = {
+        version: 2,
+        comments,
+        suggestions,
+        ...(aiSession ? { aiSession } : {}),
+      };
       await invoke('write_file', { path: scPath, content: JSON.stringify(sidecar, null, 2) });
     },
     [],
@@ -99,6 +121,7 @@ export function useFileManager(): UseFileManagerReturn {
       content: string,
       comments: Comment[],
       suggestions: Suggestion[],
+      aiSession: AISessionBinding | null,
       forcePath?: string,
     ): Promise<string | null> => {
       const targetPath = forcePath ?? filePath;
@@ -107,7 +130,7 @@ export function useFileManager(): UseFileManagerReturn {
       }
       try {
         await invoke('write_file', { path: targetPath, content });
-        await saveSidecar(targetPath, comments, suggestions);
+        await saveSidecar(targetPath, comments, suggestions, aiSession);
         setFilePath(targetPath);
         setIsDirty(false);
         return targetPath;
@@ -124,6 +147,7 @@ export function useFileManager(): UseFileManagerReturn {
       content: string,
       comments: Comment[],
       suggestions: Suggestion[],
+      aiSession: AISessionBinding | null,
     ): Promise<string | null> => {
       try {
         const defaultName = filePath ? filePath.split('/').pop() : 'untitled.md';
@@ -132,7 +156,7 @@ export function useFileManager(): UseFileManagerReturn {
         });
         if (!path) return null;
         const resolvedPath = path.endsWith('.md') ? path : `${path}.md`;
-        return saveFile(content, comments, suggestions, resolvedPath);
+        return saveFile(content, comments, suggestions, aiSession, resolvedPath);
       } catch (e) {
         console.error('Failed to save as:', e);
         return null;
