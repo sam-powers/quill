@@ -35,7 +35,7 @@ export default function App() {
   const [aiSession, setAISession] = useState<AISessionBinding | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const { filePath, isDirty, markDirty, openFile, saveFile, saveFileAs, newFile } =
+  const { filePath, isDirty, markDirty, openFile, openFilePath, saveFile, saveFileAs, newFile } =
     useFileManager();
   const {
     comments,
@@ -75,6 +75,31 @@ export default function App() {
     const name = filePath ? filePath.split('/').pop() ?? 'Untitled' : 'Untitled';
     document.title = isDirty ? `${name} •` : name;
   }, [filePath, isDirty]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const handler = await listen<string>('deep-link-open', async (e) => {
+          const path = e.payload;
+          if (!path) return;
+          const result = await openFilePath(path);
+          if (result) loadFileResult(result);
+        });
+        unlisten = handler;
+      } catch (e) {
+        // Non-Tauri context (e.g. plain dev server) — ignore.
+      }
+    })();
+    return () => { unlisten?.(); };
+  }, [openFilePath]);
+
+  // Test escape hatch: bind an AI session without going through SessionPicker.
+  useEffect(() => {
+    const seed = typeof window !== 'undefined' ? window.__quillTestSession : undefined;
+    if (seed) setAISession(seed);
+  }, []);
 
   function getMarkdown(): string {
     return editorRef.current?.getMarkdown() ?? '';

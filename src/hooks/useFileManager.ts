@@ -30,11 +30,13 @@ interface UseFileManagerReturn {
     content: string;
     sidecar: SidecarFile;
     filePath: string;
+    autoBound?: boolean;
   } | null>;
   openFilePath: (path: string) => Promise<{
     content: string;
     sidecar: SidecarFile;
     filePath: string;
+    autoBound?: boolean;
   } | null>;
   saveFile: (
     content: string,
@@ -68,9 +70,29 @@ export function useFileManager(): UseFileManagerReturn {
       } catch {
         // No sidecar — that's fine
       }
+
+      let autoBound = false;
+      if (!sidecar.aiSession) {
+        try {
+          const match = await invoke<AISessionBinding | null>(
+            'find_session_for_markdown',
+            { content },
+          );
+          if (match) {
+            sidecar = { ...sidecar, aiSession: match };
+            autoBound = true;
+            console.log(
+              `[quill] auto-linked ${path} to Claude session ${match.sessionId.slice(0, 8)}`,
+            );
+          }
+        } catch (e) {
+          console.warn('Auto-bind scan failed:', e);
+        }
+      }
+
       setFilePath(path);
-      setIsDirty(false);
-      return { content, sidecar, filePath: path };
+      setIsDirty(autoBound);
+      return { content, sidecar, filePath: path, autoBound };
     } catch (e) {
       console.error('Failed to open file:', e);
       return null;

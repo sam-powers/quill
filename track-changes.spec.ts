@@ -13,7 +13,7 @@ async function setup(): Promise<{ browser: Browser; page: Page; editor: import('
 }
 
 async function enableSuggesting(page: Page) {
-  const badge = page.locator('.editing-badge');
+  const badge = page.locator('.mode-switch');
   await expect(badge).toContainText('Editing');
   await badge.click();
   await expect(badge).toContainText('Suggesting');
@@ -287,14 +287,18 @@ test('Reject All removes all tracked marks and discards inserted text', async ()
   await browser.close();
 });
 
-test('Accept All and Reject All buttons only appear in suggesting mode', async () => {
-  const { browser, page } = await setup();
+test('Accept All and Reject All buttons only appear when pending changes exist', async () => {
+  const { browser, page, editor } = await setup();
 
   await expect(page.locator('[title="Accept all suggestions"]')).not.toBeVisible();
   await expect(page.locator('[title="Reject all suggestions"]')).not.toBeVisible();
 
   await enableSuggesting(page);
+  // Still hidden — Suggesting mode alone doesn't reveal them; pending changes do.
+  await expect(page.locator('[title="Accept all suggestions"]')).not.toBeVisible();
 
+  await editor.click();
+  await page.keyboard.type('hi');
   await expect(page.locator('[title="Accept all suggestions"]')).toBeVisible();
   await expect(page.locator('[title="Reject all suggestions"]')).toBeVisible();
 
@@ -308,8 +312,8 @@ test('toggling back to editing mode stops tracking new changes', async () => {
 
   await enableSuggesting(page);
   // Exit suggesting mode
-  await page.locator('.editing-badge').click();
-  await expect(page.locator('.editing-badge')).toContainText('Editing');
+  await page.locator('.mode-switch').click();
+  await expect(page.locator('.mode-switch')).toContainText('Editing');
 
   await editor.click();
   await page.keyboard.type('normal text');

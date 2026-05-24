@@ -109,6 +109,249 @@ struct JsonlRecord {
     #[serde(rename = "aiTitle")]
     ai_title: Option<String>,
     message: Option<serde_json::Value>,
+    #[serde(rename = "isCompactSummary")]
+    is_compact_summary: Option<bool>,
+}
+
+#[derive(Serialize)]
+struct AutoBindResult {
+    #[serde(rename = "sessionId")]
+    session_id: String,
+    cwd: String,
+    #[serde(rename = "linkedAt")]
+    linked_at: String,
+}
+
+#[derive(Serialize)]
+struct CompactionInfo {
+    compacted: bool,
+    #[serde(rename = "originalMarkdown")]
+    original_markdown: Option<String>,
+}
+
+fn assistant_text(msg: &serde_json::Value) -> String {
+    let mut out = String::new();
+    if let Some(content) = msg.get("content").and_then(|c| c.as_array()) {
+        for block in content {
+            if block.get("type").and_then(|t| t.as_str()) == Some("text") {
+                if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
+                    out.push_str(t);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn iso_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Plain ISO-8601 (UTC). Crude but enough for sidecar timestamps.
+    let days_from_epoch = secs / 86400;
+    let secs_in_day = secs % 86400;
+    let h = secs_in_day / 3600;
+    let m = (secs_in_day % 3600) / 60;
+    let s = secs_in_day % 60;
+    // Use chrono-free approximation: relies on serde elsewhere having stricter dates.
+    let (y, mo, d) = days_to_ymd(days_from_epoch as i64);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, m, s)
+}
+
+fn days_to_ymd(mut days: i64) -> (i64, u32, u32) {
+    // 1970-01-01 = day 0
+    let mut year = 1970i64;
+    loop {
+        let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+        let year_days = if leap { 366 } else { 365 };
+        if days < year_days {
+            break;
+        }
+        days -= year_days;
+        year += 1;
+    }
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let month_lengths = [31u32, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut month = 1u32;
+    let mut d = days as u32;
+    for &ml in month_lengths.iter() {
+        if d < ml {
+            break;
+        }
+        d -= ml;
+        month += 1;
+    }
+    (year, month, d + 1)
+}
+
+#[tauri::command]
+fn find_session_for_markdown(content: String) -> Result<Option<AutoBindResult>, String> {
+    // Normalize the search text — trim trailing whitespace and require it to be
+    // non-trivial so we don't auto-bind on empty/near-empty docs.
+    let needle_raw = content.trim();
+    if needle_raw.len() < 80 {
+        return Ok(None);
+    }
+    let needle = needle_raw.to_string();
+
+    let dir = claude_projects_dir()?;
+    let read = match std::fs::read_dir(&dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let mut candidates: Vec<(std::path::PathBuf, u64)> = Vec::new();
+    for project_entry in read.flatten() {
+        if !project_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let session_iter = match std::fs::read_dir(project_entry.path()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for entry in session_iter.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e != "jsonl").unwrap_or(true) {
+                continue;
+            }
+            let last_used = entry
+                .metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            candidates.push((path, last_used));
+        }
+    }
+    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    // Cap to the 50 most-recent sessions to keep the scan bounded.
+    candidates.truncate(50);
+
+    let mut matches: Vec<AutoBindResult> = Vec::new();
+    for (path, _) in &candidates {
+        let file = match std::fs::File::open(path) {
+            Ok(f) => f,
+            Err(_) => continue,
+        };
+        let reader = BufReader::new(file);
+        let mut sess_id = String::new();
+        let mut sess_cwd = String::new();
+        let mut found = false;
+        for line in reader.lines().map_while(Result::ok) {
+            let rec: JsonlRecord = match serde_json::from_str(&line) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            if sess_id.is_empty() {
+                if let Some(id) = &rec.session_id {
+                    sess_id = id.clone();
+                }
+            }
+            if sess_cwd.is_empty() {
+                if let Some(c) = &rec.cwd {
+                    if !c.is_empty() {
+                        sess_cwd = c.clone();
+                    }
+                }
+            }
+            if rec.rec_type.as_deref() == Some("assistant") {
+                if let Some(msg) = &rec.message {
+                    let text = assistant_text(msg);
+                    if !text.is_empty() && text.contains(&needle) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if found && !sess_id.is_empty() {
+            matches.push(AutoBindResult {
+                session_id: sess_id,
+                cwd: sess_cwd,
+                linked_at: iso_now(),
+            });
+            if matches.len() > 1 {
+                // More than one match → ambiguous, don't auto-bind.
+                return Ok(None);
+            }
+        }
+    }
+
+    Ok(matches.into_iter().next())
+}
+
+#[tauri::command]
+fn check_session_compacted(session_id: String) -> Result<CompactionInfo, String> {
+    // Find the jsonl that contains this session id.
+    let dir = claude_projects_dir()?;
+    let read = match std::fs::read_dir(&dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CompactionInfo { compacted: false, original_markdown: None });
+        }
+        Err(e) => return Err(e.to_string()),
+    };
+
+    let mut target: Option<std::path::PathBuf> = None;
+    'outer: for project_entry in read.flatten() {
+        let session_iter = match std::fs::read_dir(project_entry.path()) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        for entry in session_iter.flatten() {
+            let path = entry.path();
+            if path.extension().map(|e| e != "jsonl").unwrap_or(true) {
+                continue;
+            }
+            if path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s == session_id)
+                .unwrap_or(false)
+            {
+                target = Some(path);
+                break 'outer;
+            }
+        }
+    }
+
+    let Some(path) = target else {
+        return Ok(CompactionInfo { compacted: false, original_markdown: None });
+    };
+
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let mut compacted = false;
+    let mut last_assistant_markdown: Option<String> = None;
+    for line in reader.lines().map_while(Result::ok) {
+        let rec: JsonlRecord = match serde_json::from_str(&line) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        if rec.is_compact_summary.unwrap_or(false)
+            || rec.rec_type.as_deref() == Some("compact_summary")
+            || rec.rec_type.as_deref() == Some("compaction")
+        {
+            compacted = true;
+        }
+        if rec.rec_type.as_deref() == Some("assistant") {
+            if let Some(msg) = &rec.message {
+                let text = assistant_text(msg);
+                if text.contains("```") || text.lines().count() > 3 {
+                    last_assistant_markdown = Some(text);
+                }
+            }
+        }
+    }
+
+    Ok(CompactionInfo {
+        compacted,
+        original_markdown: if compacted { None } else { last_assistant_markdown },
+    })
 }
 
 #[tauri::command]
@@ -402,8 +645,20 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             app.manage(ChildRegistry::default());
+
+            use tauri::Emitter;
+            use tauri_plugin_deep_link::DeepLinkExt;
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    if let Some(path) = parse_quill_open(url.as_str()) {
+                        let _ = handle.emit("deep-link-open", path);
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -416,7 +671,54 @@ pub fn run() {
             read_claude_session_preview,
             spawn_claude_resume,
             cancel_claude_resume,
+            find_session_for_markdown,
+            check_session_compacted,
+            handle_deep_link,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn parse_quill_open(url: &str) -> Option<String> {
+    // Expected form: quill://open?file=<urlencoded path>
+    let rest = url.strip_prefix("quill://")?;
+    let (host, query) = rest.split_once('?')?;
+    if host != "open" {
+        return None;
+    }
+    for pair in query.split('&') {
+        if let Some(v) = pair.strip_prefix("file=") {
+            return Some(percent_decode(v));
+        }
+    }
+    None
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let hi = (bytes[i + 1] as char).to_digit(16);
+            let lo = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hi, lo) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        if bytes[i] == b'+' {
+            out.push(b' ');
+        } else {
+            out.push(bytes[i]);
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[tauri::command]
+fn handle_deep_link(url: String) -> Result<Option<String>, String> {
+    Ok(parse_quill_open(&url))
 }
