@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "quill-integration",
+  "displayName": "Quill Editor Integration",
+  "version": "0.1.0",
+  "description": "Open Markdown documents in the Quill editor (track-changes, inline comments, and @claude replies) directly from a Claude Code session via the quill:// deep link.",
+  "author": {
+    "name": "Sam Powers",
+    "url": "https://github.com/sam-powers"
+  },
+  "homepage": "https://github.com/sam-powers/quill",
+  "repository": "https://github.com/sam-powers/quill",
+  "license": "MIT",
+  "keywords": ["quill", "editor", "markdown", "track-changes", "comments"]
+}
