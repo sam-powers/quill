@@ -1,6 +1,7 @@
 import { Extension, Mark, mergeAttributes } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { ReplaceStep } from '@tiptap/pm/transform';
+import type { Node as ProseMirrorNode, Schema, Slice } from '@tiptap/pm/model';
 import { v4 as uuidv4 } from 'uuid';
 import type { TrackedChangeInfo } from '../types';
 
@@ -24,7 +25,6 @@ declare module '@tiptap/core' {
 
 const TRACK_PLUGIN_KEY = new PluginKey<TrackChangesStorage>('trackChanges');
 const SKIP_TRACKING_META = 'skipTracking';
-
 
 export const TrackedInsert = Mark.create({
   name: 'tracked_insert',
@@ -113,7 +113,10 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
   },
 
   addProseMirrorPlugins() {
-    const ext = this;
+    // Read the extension's live storage lazily so dispatch always sees the
+    // current enabled/authorID rather than a snapshot. An arrow keeps `this`
+    // bound without aliasing it to a local (which no-this-alias forbids).
+    const getStorage = () => this.storage as TrackChangesStorage;
 
     return [
       new Plugin({
@@ -123,7 +126,7 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
           const origDispatch = editorView.dispatch.bind(editorView);
 
           editorView.dispatch = function (tr) {
-            const { enabled, authorID } = ext.storage as TrackChangesStorage;
+            const { enabled, authorID } = getStorage();
 
             if (
               enabled &&
@@ -143,8 +146,10 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
                 const insertType = schema.marks['tracked_insert'];
                 const deleteType = schema.marks['tracked_delete'];
                 const stored = tr.storedMarks ?? editorView.state.storedMarks;
-                if (stored && (stored.some((m) => m.type === insertType || m.type === deleteType))) {
-                  tr.setStoredMarks(stored.filter((m) => m.type !== insertType && m.type !== deleteType));
+                if (stored && stored.some((m) => m.type === insertType || m.type === deleteType)) {
+                  tr.setStoredMarks(
+                    stored.filter((m) => m.type !== insertType && m.type !== deleteType),
+                  );
                 }
                 // Also strip tracked marks from any text the transaction just
                 // inserted (cursor at the boundary of a marked region inherits
@@ -176,19 +181,15 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
 
   addCommands() {
     return {
-      setTrackChangesEnabled:
-        (enabled: boolean) =>
-        () => {
-          this.storage.enabled = enabled;
-          return true;
-        },
+      setTrackChangesEnabled: (enabled: boolean) => () => {
+        this.storage.enabled = enabled;
+        return true;
+      },
 
-      setTrackChangesAuthor:
-        (authorID: string) =>
-        () => {
-          this.storage.authorID = authorID;
-          return true;
-        },
+      setTrackChangesAuthor: (authorID: string) => () => {
+        this.storage.authorID = authorID;
+        return true;
+      },
 
       acceptChange:
         (id: string) =>
@@ -342,7 +343,9 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
   },
 });
 
-export function getTrackedChanges(editor: { state: { doc: any; schema: any } }): TrackedChangeInfo[] {
+export function getTrackedChanges(editor: {
+  state: { doc: ProseMirrorNode; schema: Schema };
+}): TrackedChangeInfo[] {
   const { doc, schema } = editor.state;
   const insertType = schema.marks['tracked_insert'];
   const deleteType = schema.marks['tracked_delete'];
@@ -350,7 +353,7 @@ export function getTrackedChanges(editor: { state: { doc: any; schema: any } }):
 
   if (!insertType || !deleteType) return [];
 
-  doc.descendants((node: any, pos: number) => {
+  doc.descendants((node: ProseMirrorNode, pos: number) => {
     if (!node.isText) return;
     // Each text node contributes its text at most once per tracked id, even if
     // the same id appears on multiple marks (defensive against stacked marks).
@@ -484,7 +487,7 @@ function transformForTracking(
       continue;
     }
 
-    const rs = step as unknown as { from: number; to: number; slice: any };
+    const rs = step as unknown as { from: number; to: number; slice: Slice };
     const slice = rs.slice;
     const hasDelete = rs.from < rs.to;
     const hasInsert = slice && slice.size > 0;
@@ -494,7 +497,15 @@ function transformForTracking(
       // Reuse an existing pending delete by this author if one is adjacent/inside,
       // otherwise mint a fresh dataTracked. Returning the SAME object reference
       // means PM's Mark.eq() merges text nodes instead of stacking marks.
-      const existing = adjacentTracked(state.doc, rs.from, rs.to, insertType, deleteType, authorID, 'delete');
+      const existing = adjacentTracked(
+        state.doc,
+        rs.from,
+        rs.to,
+        insertType,
+        deleteType,
+        authorID,
+        'delete',
+      );
       const deleteTracked: DataTracked = existing ?? {
         id: uuidv4(),
         operation: 'delete',
@@ -555,9 +566,11 @@ function transformForTracking(
           let found = false;
           state.doc.nodesBetween(rs.from, rs.to, (node) => {
             if (!node.isText) return;
-            if (node.marks.some(
-              (m) => m.type === deleteType && m.attrs.dataTracked?.status === 'pending',
-            )) {
+            if (
+              node.marks.some(
+                (m) => m.type === deleteType && m.attrs.dataTracked?.status === 'pending',
+              )
+            ) {
               found = true;
             }
           });
@@ -585,7 +598,15 @@ function transformForTracking(
     }
 
     if (hasInsert) {
-      const existing = adjacentTracked(state.doc, rs.from, rs.to, insertType, deleteType, authorID, 'insert');
+      const existing = adjacentTracked(
+        state.doc,
+        rs.from,
+        rs.to,
+        insertType,
+        deleteType,
+        authorID,
+        'insert',
+      );
       const insertTracked: DataTracked = existing ?? {
         id: uuidv4(),
         operation: 'insert',
@@ -631,11 +652,11 @@ function transformForTracking(
   //    range instead of re-marking the same character.
   const lastStep = tr.steps[tr.steps.length - 1];
   if (lastStep instanceof ReplaceStep) {
-    const rs = lastStep as unknown as { from: number; to: number; slice: any };
+    const rs = lastStep as unknown as { from: number; to: number; slice: Slice };
     const hasInsert = rs.slice && rs.slice.size > 0;
     try {
       if (hasInsert) {
-        const insertEnd = lastInsertEnd ?? (rs.from + offset);
+        const insertEnd = lastInsertEnd ?? rs.from + offset;
         newTr.setSelection(TextSelection.create(newTr.doc, insertEnd));
       } else if (lastDeleteLeftmost !== null) {
         newTr.setSelection(TextSelection.create(newTr.doc, lastDeleteLeftmost));

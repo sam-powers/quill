@@ -78,6 +78,16 @@ export default function App() {
     document.title = isDirty ? `${name} •` : name;
   }, [filePath, isDirty]);
 
+  const loadFileResult = useCallback(
+    (result: { content: string; sidecar: SidecarFile; filePath: string }) => {
+      editorRef.current?.setContent(result.content);
+      setComments(result.sidecar.comments ?? []);
+      setSuggestions(result.sidecar.suggestions ?? []);
+      setAISession(result.sidecar.aiSession ?? null);
+    },
+    [setComments, setSuggestions],
+  );
+
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     (async () => {
@@ -97,7 +107,7 @@ export default function App() {
     return () => {
       unlisten?.();
     };
-  }, [openFilePath]);
+  }, [openFilePath, loadFileResult]);
 
   // Test escape hatch: bind an AI session without going through SessionPicker.
   useEffect(() => {
@@ -125,14 +135,7 @@ export default function App() {
     const result = await openFile();
     if (!result) return;
     loadFileResult(result);
-  }, [openFile]);
-
-  function loadFileResult(result: { content: string; sidecar: SidecarFile; filePath: string }) {
-    editorRef.current?.setContent(result.content);
-    setComments(result.sidecar.comments ?? []);
-    setSuggestions(result.sidecar.suggestions ?? []);
-    setAISession(result.sidecar.aiSession ?? null);
-  }
+  }, [openFile, loadFileResult]);
 
   const handleNew = useCallback(() => {
     newFile();
