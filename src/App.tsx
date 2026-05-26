@@ -12,8 +12,18 @@ import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
 import { getTrackedChanges } from './extensions/TrackChanges';
-import type { AISessionBinding, SidecarFile, TrackedChangeInfo } from './types';
+import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
+import type {
+  AISessionBinding,
+  Comment,
+  EditScope,
+  QuillEdit,
+  SidecarFile,
+  TrackedChangeInfo,
+} from './types';
 import './App.css';
+
+const CLAUDE_AUTHOR_ID = 'claude';
 
 const AUTHOR = 'Anonymous';
 
@@ -59,12 +69,71 @@ export default function App() {
   const { suggestions, setSuggestions } = useSuggestions();
 
   const getDocMarkdown = useCallback(() => editorRef.current?.getMarkdown() ?? '', []);
+
+  // Read the live document text for a comment's anchored range and its
+  // enclosing paragraph, as plaintext (matching how Claude's `find` strings are
+  // expected to match). Uses the current doc, not the stale anchorText snapshot.
+  const getRangeTexts = useCallback(
+    (comment: Comment) => {
+      const doc = editor?.state.doc;
+      if (!doc) return { highlightText: comment.anchorText, paragraphText: comment.anchorText };
+      const size = doc.content.size;
+      const cFrom = Math.min(comment.from, size);
+      const cTo = Math.min(comment.to, size);
+      const $from = doc.resolve(cFrom);
+      const pFrom = $from.start($from.depth);
+      const pTo = $from.end($from.depth);
+      return {
+        highlightText: rangeText(doc, cFrom, cTo),
+        paragraphText: rangeText(doc, pFrom, pTo),
+      };
+    },
+    [editor],
+  );
+
+  // Apply Claude's quote-based edits as tracked-change suggestions. Forces
+  // suggesting mode on (under Claude's author id) for the duration, applies each
+  // located edit back-to-front, then restores the user's prior mode/author.
+  const applyTrackedEdits = useCallback(
+    (comment: Comment, edits: QuillEdit[], scope: EditScope) => {
+      const ed = editor;
+      if (!ed) return { applied: 0, skipped: edits.length };
+
+      const range = resolveScopeRange(ed.state.doc, comment, scope);
+      const { placed, skipped } = planEdits(ed.state.doc, range.from, range.to, edits);
+
+      const trackStorage = (
+        ed.storage as unknown as Record<string, { enabled: boolean; authorID: string }>
+      )['trackChanges'] as { enabled: boolean; authorID: string } | undefined;
+      const priorEnabled = trackStorage?.enabled ?? false;
+      const priorAuthor = trackStorage?.authorID ?? AUTHOR;
+
+      let applied = 0;
+      try {
+        ed.commands.setTrackChangesEnabled(true);
+        ed.commands.setTrackChangesAuthor(CLAUDE_AUTHOR_ID);
+        for (const e of placed) {
+          // Back-to-front: applying a later edit doesn't shift earlier offsets.
+          ed.chain().setTextSelection({ from: e.from, to: e.to }).insertContent(e.replace).run();
+          applied++;
+        }
+      } finally {
+        ed.commands.setTrackChangesEnabled(priorEnabled);
+        ed.commands.setTrackChangesAuthor(priorAuthor);
+      }
+      return { applied, skipped };
+    },
+    [editor],
+  );
+
   const claudeReply = useClaudeReply({
     startAIReply,
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
     getDocMarkdown,
+    getRangeTexts,
+    applyTrackedEdits,
   });
 
   // Re-render on scroll so button top tracks live coordsAtPos

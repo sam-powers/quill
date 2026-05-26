@@ -63,3 +63,22 @@ export interface TrackedChangeInfo {
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;
 }
+
+/**
+ * One quote-based edit Claude proposes inside a comment: replace the first
+ * occurrence of the plaintext `find` (within the scoped range) with `replace`.
+ * An empty `find` is a pure insertion; an empty `replace` is a pure deletion.
+ */
+export interface QuillEdit {
+  find: string;
+  replace: string;
+}
+
+/** The parsed contents of a ```quill-edits fenced block in Claude's reply. */
+export interface QuillEditsBlock {
+  summary: string;
+  edits: QuillEdit[];
+}
+
+/** How far Claude's edits may reach, derived from the user's wording. */
+export type EditScope = 'highlight' | 'paragraph' | 'doc';

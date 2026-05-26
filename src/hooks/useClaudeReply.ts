@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { Channel, invoke } from '@tauri-apps/api/core';
-import type { AISessionBinding, Comment } from '../types';
+import type { AISessionBinding, Comment, EditScope, QuillEdit, QuillEditsBlock } from '../types';
 
 type ChunkEvent =
   | { kind: 'delta'; text: string }
@@ -8,12 +8,55 @@ type ChunkEvent =
   | { kind: 'error'; message: string }
   | { kind: 'cancelled' };
 
+/** Live text for a comment's anchored range and its enclosing paragraph. */
+export interface RangeTexts {
+  highlightText: string;
+  paragraphText: string;
+}
+
 interface UseClaudeReplyOptions {
   startAIReply: (commentId: string) => string;
   appendAIReplyChunk: (commentId: string, replyId: string, chunk: string) => void;
   finishAIReply: (commentId: string, replyId: string) => void;
   failAIReply: (commentId: string, replyId: string, message: string) => void;
   getDocMarkdown: () => string;
+  /** Read the current document text for a comment's range + paragraph. */
+  getRangeTexts: (comment: Comment) => RangeTexts;
+  /** Apply Claude's proposed edits as tracked-change suggestions. */
+  applyTrackedEdits: (
+    comment: Comment,
+    edits: QuillEdit[],
+    scope: EditScope,
+  ) => { applied: number; skipped: number };
+}
+
+const FENCE = '```quill-edits';
+
+/**
+ * Decide how far Claude's edits may reach from the user's wording. Defaults to
+ * the highlight; only explicit "whole paragraph"/"whole doc" phrasing widens it.
+ */
+export function detectScope(userText: string): EditScope {
+  if (/\bwhole doc\b|\bwhole document\b|\bentire doc(ument)?\b/i.test(userText)) return 'doc';
+  if (/\bwhole paragraph\b|\bentire paragraph\b|\bthis paragraph\b/i.test(userText))
+    return 'paragraph';
+  return 'highlight';
+}
+
+/**
+ * Split a raw Claude reply into the user-visible prose and the (optional)
+ * quill-edits JSON. `visible` is everything before the fence (trimmed of the
+ * trailing fence/newlines). `block` is the JSON text between the opening and
+ * closing fences, or null if no complete block is present.
+ */
+export function splitVisible(raw: string): { visible: string; block: string | null } {
+  const start = raw.indexOf(FENCE);
+  if (start === -1) return { visible: raw, block: null };
+  const visible = raw.slice(0, start).replace(/\n+$/, '');
+  const afterFence = raw.slice(start + FENCE.length);
+  const close = afterFence.indexOf('```');
+  if (close === -1) return { visible, block: null };
+  return { visible, block: afterFence.slice(0, close).trim() };
 }
 
 interface UseClaudeReplyReturn {
@@ -41,10 +84,19 @@ function lineDiff(original: string, current: string): string {
   return out.length === 0 ? '(no textual diff)' : out.join('\n');
 }
 
+const SCOPE_INSTRUCTION: Record<EditScope, string> = {
+  highlight: 'Edit ONLY the highlighted text. Do not change the rest of the paragraph or document.',
+  paragraph:
+    'The user asked to edit the whole paragraph — you may edit anywhere in the PARAGRAPH section, but not beyond it.',
+  doc: 'The user asked to edit the whole document — you may edit anywhere in the document.',
+};
+
 function buildPrompt(
   comment: Comment,
   userText: string,
   docMarkdown: string,
+  ranges: RangeTexts,
+  scope: EditScope,
   compaction: CompactionInfo | null,
 ): string {
   const threadLines: string[] = [];
@@ -58,18 +110,41 @@ function buildPrompt(
 
   const head = [
     'You are responding inline on a markdown document you previously authored.',
-    'Reply concisely; do not rewrite the document.',
-    '',
-    `Anchor (the text the user highlighted): "${comment.anchorText}"`,
     '',
     'Comment thread so far:',
     threadLines.join('\n'),
     '',
   ];
 
+  const editProtocol = [
+    'HOW TO RESPOND:',
+    'If the user is asking a question or for an opinion, reply concisely in prose and do NOT propose edits.',
+    'If the user is asking you to rewrite, fix, revise, restructure, shorten, expand, or otherwise change the text (e.g. "fix the grammar", "make this a list", "turn this into prose"), make the changes as tracked suggestions by appending EXACTLY ONE fenced block at the very end of your reply:',
+    '',
+    '```quill-edits',
+    '{"summary":"<one short sentence describing what you changed>","edits":[{"find":"<exact original substring>","replace":"<new text>"}]}',
+    '```',
+    '',
+    'Rules for the edits block:',
+    `- ${SCOPE_INSTRUCTION[scope]}`,
+    '- Each "find" must be an EXACT substring of the EDIT-ONLY-THIS text below, copied verbatim as PLAIN TEXT. Do NOT include markdown syntax such as leading "- ", "* ", or "#"; match only the visible characters.',
+    '- Make "find" strings long/unique enough to be unambiguous. To turn a bullet list into prose, set "find" to the run of list-item text and "replace" to the prose.',
+    '- To delete text, use an empty "replace". To insert, you may set "find" to a short unique substring and include it at the start of "replace".',
+    '- Keep any prose before the block to one or two sentences; the "summary" is what the user sees, so write it as a human editor would ("Fixed subject-verb agreement and tightened the opening.").',
+    '- Output the block only when you actually changed something. If nothing needs changing, omit it.',
+    '',
+    `=== EDIT ONLY THIS (highlighted) ===`,
+    ranges.highlightText,
+    `=== PARAGRAPH (context) ===`,
+    ranges.paragraphText,
+    '',
+  ];
+
   if (compaction && !compaction.compacted && compaction.originalMarkdown) {
     return [
       ...head,
+      ...editProtocol,
+      '=== FULL DOCUMENT (context) ===',
       'Your context is intact; here is the diff between what you originally wrote and what the doc looks like now:',
       '---',
       lineDiff(compaction.originalMarkdown, docMarkdown),
@@ -79,6 +154,8 @@ function buildPrompt(
 
   return [
     ...head,
+    ...editProtocol,
+    '=== FULL DOCUMENT (context) ===',
     compaction?.compacted
       ? 'Your context was compacted since you wrote this; full current document follows:'
       : 'Current document (may have been edited since you wrote it):',
@@ -122,12 +199,92 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           console.warn('check_session_compacted failed:', e);
         }
       }
-      const prompt = buildPrompt(comment, userText, opts.getDocMarkdown(), compaction);
+      const scope = detectScope(userText);
+      const ranges = opts.getRangeTexts(comment);
+      const prompt = buildPrompt(
+        comment,
+        userText,
+        opts.getDocMarkdown(),
+        ranges,
+        scope,
+        compaction,
+      );
+
+      // Per-ask streaming state. We accumulate the raw text and only surface the
+      // prose before the ```quill-edits fence to the thread. To avoid leaking a
+      // partial fence when it straddles deltas, we hold back the last
+      // (FENCE.length - 1) chars until we know they can't begin a fence.
+      let rawAccum = '';
+      let visibleEmitted = 0;
+
+      const emitVisible = (flush: boolean) => {
+        const fenceStart = rawAccum.indexOf(FENCE);
+        // Once the fence is found, everything visible lives before it and is
+        // final — nothing after it should ever reach the thread.
+        const visibleCap = fenceStart === -1 ? rawAccum.length : fenceStart;
+        // While no fence is seen yet, hold back only the trailing run that could
+        // still grow into one — i.e. the longest suffix of what we've received
+        // that is a prefix of FENCE. Ordinary prose (which can't begin a fence)
+        // streams through immediately. At end-of-stream we flush everything.
+        let holdback = 0;
+        if (fenceStart === -1 && !flush) {
+          for (let n = Math.min(FENCE.length - 1, rawAccum.length); n > 0; n--) {
+            if (FENCE.startsWith(rawAccum.slice(rawAccum.length - n))) {
+              holdback = n;
+              break;
+            }
+          }
+        }
+        const safeEnd = Math.max(visibleEmitted, visibleCap - holdback);
+        if (safeEnd > visibleEmitted) {
+          opts.appendAIReplyChunk(comment.id, replyId, rawAccum.slice(visibleEmitted, safeEnd));
+          visibleEmitted = safeEnd;
+        }
+      };
+
+      const finalize = () => {
+        const { visible, block } = splitVisible(rawAccum);
+        let parsed: QuillEditsBlock | null = null;
+        if (block) {
+          try {
+            parsed = JSON.parse(block) as QuillEditsBlock;
+          } catch (e) {
+            console.warn('Failed to parse quill-edits block:', e);
+          }
+        }
+
+        if (parsed && Array.isArray(parsed.edits) && parsed.edits.length > 0) {
+          // The prose we already streamed; if it was empty, surface the summary.
+          if (rawAccum.slice(0, visibleEmitted).trim() === '' && parsed.summary) {
+            opts.appendAIReplyChunk(comment.id, replyId, parsed.summary);
+            visibleEmitted = rawAccum.indexOf(FENCE);
+          }
+          const { skipped } = opts.applyTrackedEdits(comment, parsed.edits, scope);
+          if (skipped > 0) {
+            const noun = skipped === 1 ? 'change' : 'changes';
+            opts.appendAIReplyChunk(
+              comment.id,
+              replyId,
+              `\n\n(${skipped} ${noun} could not be located in the text and ${skipped === 1 ? 'was' : 'were'} skipped.)`,
+            );
+          }
+        } else {
+          // No edits — make sure whatever prose we held back gets flushed. If a
+          // fence was present but unparseable, `visible` excludes the bad block.
+          if (visibleEmitted < visible.length) {
+            opts.appendAIReplyChunk(comment.id, replyId, visible.slice(visibleEmitted));
+            visibleEmitted = visible.length;
+          }
+        }
+      };
 
       const dispatch = (msg: ChunkEvent) => {
         if (msg.kind === 'delta') {
-          opts.appendAIReplyChunk(comment.id, replyId, msg.text);
+          rawAccum += msg.text;
+          emitVisible(false);
         } else if (msg.kind === 'done' || msg.kind === 'cancelled') {
+          emitVisible(true);
+          finalize();
           opts.finishAIReply(comment.id, replyId);
           tokensRef.current.delete(replyId);
         } else if (msg.kind === 'error') {

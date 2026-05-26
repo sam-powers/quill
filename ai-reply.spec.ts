@@ -184,6 +184,106 @@ test('AI reply: pending → error shows Re-link button', async ({ page }) => {
   await expect(aiReply.locator('.ai-spinner')).toHaveCount(0);
 });
 
+// Selects the first `count` characters of the current line (from its start),
+// then opens the comment composer and posts an @claude reply. Used to exercise
+// edit scope: only the highlighted substring should be editable.
+async function addCommentOnPrefix(page: Page, anchor: string, count: number, replyText: string) {
+  await page.keyboard.type(anchor);
+  await page.keyboard.down('Meta');
+  await page.keyboard.press('ArrowLeft'); // to line start
+  await page.keyboard.up('Meta');
+  await page.keyboard.down('Shift');
+  for (let i = 0; i < count; i++) await page.keyboard.press('ArrowRight');
+  await page.keyboard.up('Shift');
+  await page.waitForTimeout(50);
+  await page.locator('.add-comment-btn').click();
+  await page.locator('.add-comment-compose textarea').fill('seed comment');
+  await page.locator('.add-comment-compose .btn-primary').click();
+  await page.waitForTimeout(150);
+  await page.locator('.comment-reply-trigger').click();
+  await page.locator('.comment-reply-input').fill(replyText);
+  await page.locator('.comment-card .btn-primary').click();
+}
+
+test('AI edits: prose + quill-edits block (fence split across deltas) becomes a suggestion', async ({
+  page,
+}) => {
+  // The opening fence is split across two deltas to prove the holdback strategy
+  // never leaks a partial fence into the visible reply.
+  await setupWithMock(page, [
+    { kind: 'delta', text: 'Fixed the subject-verb agreement.\n\n```quil' },
+    { kind: 'delta', text: 'l-edits\n' },
+    {
+      kind: 'delta',
+      text: '{"summary":"Fixed subject-verb agreement.","edits":[{"find":"cat are","replace":"cats are"}]}\n```',
+    },
+    { kind: 'done' },
+  ]);
+
+  await addCommentWithAIReply(page, 'the cat are happy', '@claude fix the grammar');
+
+  const aiReply = page.locator('.comment-reply-ai').first();
+  await expect(aiReply).toBeVisible({ timeout: 2000 });
+
+  const replyText = aiReply.locator('.comment-reply-text');
+  await expect(replyText).toContainText('Fixed the subject-verb agreement.', { timeout: 3000 });
+  // The JSON block must never reach the user.
+  await expect(replyText).not.toContainText('quill-edits');
+  await expect(replyText).not.toContainText('"find"');
+  await expect(aiReply.locator('.ai-spinner')).toHaveCount(0);
+
+  // A suggestion card appears for the edit, authored by Claude.
+  const card = page.locator('.suggestion-card');
+  await expect(card.first()).toBeVisible({ timeout: 2000 });
+  await expect(page.locator('.suggestion-card .comment-author').first()).toHaveText('Claude (AI)');
+  // The new text "cats are" shows up as a tracked insertion in the document.
+  await expect(page.locator('.ProseMirror')).toContainText('cats are');
+});
+
+test('AI edits: an edit outside the highlight is skipped and surfaced', async ({ page }) => {
+  // Highlight only "alpha" (first 5 chars). The edit targeting "gamma" lies
+  // outside the highlight, so it must be skipped — not applied.
+  await setupWithMock(page, [
+    { kind: 'delta', text: 'Capitalized the opening word.\n\n```quill-edits\n' },
+    {
+      kind: 'delta',
+      text: '{"summary":"x","edits":[{"find":"gamma","replace":"GAMMA"}]}\n```',
+    },
+    { kind: 'done' },
+  ]);
+
+  await addCommentOnPrefix(page, 'alpha beta gamma', 5, '@claude tidy this up');
+
+  const aiReply = page.locator('.comment-reply-ai').first();
+  await expect(aiReply).toBeVisible({ timeout: 2000 });
+  // The out-of-range edit is reported as skipped, and the document is unchanged.
+  await expect(aiReply.locator('.comment-reply-text')).toContainText('skipped', { timeout: 3000 });
+  await expect(page.locator('.suggestion-card')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror')).not.toContainText('GAMMA');
+});
+
+test('AI edits: "whole paragraph" widens scope beyond the highlight', async ({ page }) => {
+  // Highlight only "alpha" but ask for the whole paragraph; an edit on "gamma"
+  // (elsewhere in the paragraph) should now apply.
+  await setupWithMock(page, [
+    { kind: 'delta', text: 'Revised across the paragraph.\n\n```quill-edits\n' },
+    {
+      kind: 'delta',
+      text: '{"summary":"x","edits":[{"find":"gamma","replace":"GAMMA"}]}\n```',
+    },
+    { kind: 'done' },
+  ]);
+
+  await addCommentOnPrefix(page, 'alpha beta gamma', 5, '@claude rewrite the whole paragraph');
+
+  const aiReply = page.locator('.comment-reply-ai').first();
+  await expect(aiReply).toBeVisible({ timeout: 2000 });
+  await expect(aiReply.locator('.ai-spinner')).toHaveCount(0, { timeout: 3000 });
+  // The edit landed even though it was outside the highlight.
+  await expect(page.locator('.suggestion-card').first()).toBeVisible({ timeout: 2000 });
+  await expect(page.locator('.ProseMirror')).toContainText('GAMMA');
+});
+
 test('AI reply: pending → cancel resolves without leaving spinner', async ({ page }) => {
   await setupWithMock(page, [{ kind: 'delta', text: 'starting...' }, { kind: 'pause' }]);
 

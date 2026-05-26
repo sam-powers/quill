@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@manuscripts/track-changes-plugin": "^2.3.10",
-    "@tauri-apps/api": "^2",
+    "@tauri-apps/api": "^2.11.0",
     "@tauri-apps/plugin-dialog": "^2.7.0",
     "@tauri-apps/plugin-fs": "^2.5.0",
     "@tauri-apps/plugin-opener": "^2",

@@ -20,6 +20,7 @@ function timeAgo(ts: number): string {
 export default function SuggestionCard({ change, top, onAccept, onReject }: SuggestionCardProps) {
   const isInsert = change.operation === 'insert';
   const preview = change.text.slice(0, 60) + (change.text.length > 60 ? '…' : '');
+  const authorLabel = change.authorID === 'claude' ? 'Claude (AI)' : change.authorID;
 
   return (
     <div
@@ -33,7 +34,7 @@ export default function SuggestionCard({ change, top, onAccept, onReject }: Sugg
         <span className={`suggestion-type-badge ${isInsert ? 'insert' : 'delete'}`}>
           {isInsert ? 'Insertion' : 'Deletion'}
         </span>
-        <span className="comment-author">{change.authorID}</span>
+        <span className="comment-author">{authorLabel}</span>
         <span className="comment-time">{timeAgo(change.createdAt)}</span>
       </div>
 
