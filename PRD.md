@@ -50,6 +50,10 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 - A document can be **linked to a Claude Code session** via the footer ("Link to Claude session…"), choosing from a session picker. Once linked, the footer shows the linked session (`🔗 Claude <id>`) and offers an unlink (×).
 - In a comment thread, the user can request a reply from Claude. The request is sent to the linked session and the **answer streams back inline** as an AI-authored reply in the thread.
 - The prompt Claude receives includes the **highlighted anchor text**, the **comment thread so far**, and document context.
+- **Claude can write edits directly into the document as tracked changes.** When the user asks for a revision (e.g. "tighten this", "fix the grammar"), Claude's reply carries a fenced `quill-edits` block of `find` / `replace` edits alongside its prose. Quill locates each `find` string and applies the replacement as a **tracked change attributed to Claude** — so AI revisions land as ordinary Accept / Reject suggestion cards in the margin, reviewed exactly like a human's. The prose explanation still appears in the thread; only the editing instructions are stripped from it.
+  - **Scope is inferred from the request:** by default edits are confined to the **highlighted** anchor text; phrasing like "this paragraph" widens the scope to the surrounding **paragraph**, and "the whole document" to the **entire doc**.
+  - Edits whose `find` text can no longer be located in the document are skipped rather than misapplied, and the count is reported.
+  - Track-changes mode is toggled on only for the duration of applying Claude's edits, then restored to whatever it was — so this works whether or not the user is in Suggesting mode.
 - **Compaction-aware context:** before asking, Quill checks whether the linked session's context was compacted.
   - Context intact → Claude is sent a **line diff** of what it originally wrote vs. the current document.
   - Context compacted → Claude is sent the **full current document** with a note explaining the compaction.
