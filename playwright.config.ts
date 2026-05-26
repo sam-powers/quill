@@ -5,12 +5,11 @@ import { defineConfig, devices } from '@playwright/test';
  * Tauri window loads). Tauri-native commands are stubbed per-test via
  * window.__quillMock / __TAURI_INTERNALS__ shims, so no Rust process is needed.
  *
- * Unit tests live under src/test/ and belong to vitest — they are excluded
- * here via testMatch so the two runners never collide.
+ * Unit tests live under src/test/ and belong to vitest; these end-to-end
+ * specs live under e2e/, so the two runners never collide.
  */
 export default defineConfig({
-  testDir: '.',
-  testMatch: '*.spec.ts',
+  testDir: 'e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

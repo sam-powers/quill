@@ -7,8 +7,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
-    // Unit tests live under src/test/. Root-level *.spec.ts are Playwright
-    // e2e specs and must not be collected by vitest.
+    // Unit tests live under src/test/; the e2e/*.spec.ts files are Playwright
+    // specs and are excluded by this include allowlist.
     include: ['src/test/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',

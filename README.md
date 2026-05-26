@@ -68,8 +68,11 @@ src/                  React/TypeScript frontend
   hooks/              File I/O, comment/suggestion state, Claude replies
   types/              Shared data contract (Comment, Suggestion, SidecarFile, …)
   utils/              Pure helpers (sidecar paths, tracked-edit diffing)
+  test/               Vitest unit/component tests
 src-tauri/            Rust/Tauri backend (file I/O, dialogs, Claude session integration)
+e2e/                  Playwright end-to-end specs
 plugin/               Claude Code plugin that opens files in Quill via deep link
+docs/                 Design references and supporting docs
 ```
 
 See [`PRD.md`](./PRD.md) for the full as-built product spec and [`CLAUDE.md`](./CLAUDE.md) for architecture notes.
