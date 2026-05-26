@@ -189,9 +189,7 @@ test('AI reply: pending → error shows Re-link button', async ({ page }) => {
 // edit scope: only the highlighted substring should be editable.
 async function addCommentOnPrefix(page: Page, anchor: string, count: number, replyText: string) {
   await page.keyboard.type(anchor);
-  await page.keyboard.down('ControlOrMeta');
-  await page.keyboard.press('ArrowLeft'); // to line start
-  await page.keyboard.up('ControlOrMeta');
+  await page.keyboard.press('Home'); // to line start (platform-agnostic; Cmd/Ctrl+Left differ across OSes)
   await page.keyboard.down('Shift');
   for (let i = 0; i < count; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.up('Shift');
