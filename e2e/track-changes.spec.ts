@@ -61,9 +61,9 @@ test('deleting text in suggesting mode wraps it in tracked_delete mark', async (
   await editor.click();
 
   // Select all and delete
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   await page.keyboard.press('Backspace');
   await page.waitForTimeout(150);
@@ -80,9 +80,9 @@ test('deleting text in normal mode removes it outright with no tracked mark', as
   await page.keyboard.type('hello world');
   await page.waitForTimeout(100);
 
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   await page.keyboard.press('Backspace');
   await page.waitForTimeout(150);
@@ -118,9 +118,9 @@ test('deletion suggestion card appears after deleting committed text', async ({ 
   await editor.click();
 
   // Select all text and delete
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   await page.keyboard.press('Backspace');
   await page.waitForTimeout(300);
@@ -178,9 +178,9 @@ test('accepting a deletion removes the tracked mark and removes the text', async
   await enableSuggesting(page);
   await editor.click();
 
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   await page.keyboard.press('Backspace');
   await page.waitForTimeout(300);

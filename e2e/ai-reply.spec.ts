@@ -78,9 +78,9 @@ async function setupWithMock(page: Page, script: MockScriptStep[]): Promise<void
 async function addCommentWithAIReply(page: Page, anchor: string, replyText: string) {
   await page.keyboard.type(anchor);
   // Select all
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   // Open comment composer
   await page.locator('.add-comment-btn').click();
@@ -107,9 +107,9 @@ async function setupWithoutSession(page: Page): Promise<void> {
 // step). Exercises the "tag Claude in the first comment" path.
 async function addCommentTaggingClaude(page: Page, anchor: string, body: string) {
   await page.keyboard.type(anchor);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   await page.locator('.add-comment-btn').click();
   await page.locator('.add-comment-compose textarea').fill(body);
@@ -189,9 +189,9 @@ test('AI reply: pending → error shows Re-link button', async ({ page }) => {
 // edit scope: only the highlighted substring should be editable.
 async function addCommentOnPrefix(page: Page, anchor: string, count: number, replyText: string) {
   await page.keyboard.type(anchor);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('ArrowLeft'); // to line start
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.keyboard.down('Shift');
   for (let i = 0; i < count; i++) await page.keyboard.press('ArrowRight');
   await page.keyboard.up('Shift');

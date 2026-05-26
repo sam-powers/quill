@@ -133,9 +133,9 @@ test('auto-bind: stray .md with no sidecar links to matching Claude session', as
   await setupWithIPC(page, { handler });
 
   // Trigger File → Open via Cmd+O (App.tsx wires this to handleOpen → openFile).
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('o');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
 
   // Footer should show the bound session id (Footer.tsx renders `aiSession.sessionId.slice(0,8)`).
   await expect(page.locator('.footer-ai-binding.linked')).toContainText('autoboun', {
@@ -160,9 +160,9 @@ test('auto-bind: no match leaves session unbound (no false link)', async ({ page
 
   await setupWithIPC(page, { handler });
 
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('o');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(300);
 
   // No linked-session chip in footer (still showing "Link to Claude session…").
@@ -181,9 +181,9 @@ async function fireAIReplyAndCaptureCompactionCall(
   // Add a comment with @claude so useClaudeReply.ask fires.
   await page.locator('.ProseMirror').click();
   await page.keyboard.type('content to comment on');
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
   await page.locator('.add-comment-btn').click();
   await page.locator('.add-comment-compose textarea').fill('seed');

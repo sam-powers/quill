@@ -36,9 +36,9 @@ async function disableSuggesting(page: Page) {
 }
 
 async function selectAll(page: Page) {
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('a');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
 }
 
@@ -143,9 +143,9 @@ test('Cmd+B keyboard shortcut applies bold', async ({ page }) => {
   const { editor } = await setup(page);
   await page.keyboard.type('hello');
   await selectAll(page);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('b');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(150);
   expect(await editor.innerHTML()).toContain('<strong>');
 });
@@ -154,9 +154,9 @@ test('Cmd+I keyboard shortcut applies italic', async ({ page }) => {
   const { editor } = await setup(page);
   await page.keyboard.type('hello');
   await selectAll(page);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('i');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(150);
   expect(await editor.innerHTML()).toContain('<em>');
 });
@@ -314,9 +314,9 @@ test('Cmd+Z keyboard shortcut undoes', async ({ page }) => {
   const { editor } = await setup(page);
   await page.keyboard.type('hello');
   await page.waitForTimeout(100);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('z');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(150);
   await expect(editor).not.toContainText('hello');
 });
@@ -887,9 +887,9 @@ test('zoom slider in footer is present', async ({ page }) => {
 
 test('Cmd+= zoom shortcut increases zoom', async ({ page }) => {
   await setup(page);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('=');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(100);
   const label = await page.locator('.footer-zoom-label').textContent();
   expect(label).not.toBe('100%');
@@ -897,9 +897,9 @@ test('Cmd+= zoom shortcut increases zoom', async ({ page }) => {
 
 test('Cmd+- zoom shortcut decreases zoom', async ({ page }) => {
   await setup(page);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('-');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(100);
   const label = await page.locator('.footer-zoom-label').textContent();
   expect(label).not.toBe('100%');
@@ -907,13 +907,13 @@ test('Cmd+- zoom shortcut decreases zoom', async ({ page }) => {
 
 test('Cmd+0 resets zoom to 100%', async ({ page }) => {
   await setup(page);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('=');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(50);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('0');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(100);
   await expect(page.locator('.footer-zoom-label')).toContainText('100%');
 });
@@ -978,9 +978,9 @@ test('undo in suggesting mode reverts the last tracked change', async ({ page })
   await editor.click();
   await page.keyboard.type('hello');
   await page.waitForTimeout(300);
-  await page.keyboard.down('Meta');
+  await page.keyboard.down('ControlOrMeta');
   await page.keyboard.press('z');
-  await page.keyboard.up('Meta');
+  await page.keyboard.up('ControlOrMeta');
   await page.waitForTimeout(300);
   expect(await editor.innerHTML()).not.toContain('<ins');
 });
