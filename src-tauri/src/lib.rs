@@ -370,7 +370,7 @@ fn find_session_for_markdown(content: String) -> Result<Option<AutoBindResult>, 
             candidates.push((path, last_used));
         }
     }
-    candidates.sort_by(|a, b| b.1.cmp(&a.1));
+    candidates.sort_by_key(|c| std::cmp::Reverse(c.1));
     // Cap to the 50 most-recent sessions to keep the scan bounded.
     candidates.truncate(50);
 
@@ -566,7 +566,7 @@ fn list_claude_sessions() -> Result<Vec<SessionSummary>, String> {
         }
     }
 
-    summaries.sort_by(|a, b| b.last_used.cmp(&a.last_used));
+    summaries.sort_by_key(|s| std::cmp::Reverse(s.last_used));
     summaries.truncate(50);
     Ok(summaries)
 }

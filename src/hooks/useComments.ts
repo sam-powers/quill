@@ -78,23 +78,20 @@ export function useComments(): UseCommentsReturn {
     return replyId;
   }, []);
 
-  const appendAIReplyChunk = useCallback(
-    (commentId: string, replyId: string, chunk: string) => {
-      setComments((prev) =>
-        prev.map((c) =>
-          c.id === commentId
-            ? {
-                ...c,
-                replies: c.replies.map((r) =>
-                  r.id === replyId ? { ...r, text: r.text + chunk } : r,
-                ),
-              }
-            : c,
-        ),
-      );
-    },
-    [],
-  );
+  const appendAIReplyChunk = useCallback((commentId: string, replyId: string, chunk: string) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId ? { ...r, text: r.text + chunk } : r,
+              ),
+            }
+          : c,
+      ),
+    );
+  }, []);
 
   const finishAIReply = useCallback((commentId: string, replyId: string) => {
     setComments((prev) =>
@@ -102,9 +99,7 @@ export function useComments(): UseCommentsReturn {
         c.id === commentId
           ? {
               ...c,
-              replies: c.replies.map((r) =>
-                r.id === replyId ? { ...r, pending: false } : r,
-              ),
+              replies: c.replies.map((r) => (r.id === replyId ? { ...r, pending: false } : r)),
             }
           : c,
       ),

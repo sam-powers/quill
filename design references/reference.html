@@ -10,232 +10,542 @@
   loaded from Google Fonts.
 -->
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Editor — Reference Implementation</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Lato:wght@300;700&display=swap" rel="stylesheet">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
-  --color-bg:           #B8C2BA;
-  --color-chrome:       #AEBAB1;
-  --color-chrome-dark:  #A6B2A9;
-  --color-page:         #F8F9F6;
-  --color-sage:         #5C7A62;
-  --color-sage-light:   #DDE6DE;
-  --color-sage-mid:     #8EAD93;
-  --color-sage-dark:    #3A5C3F;
-  --color-ink:          #222722;
-  --color-ink-mid:      #4E564E;
-  --color-ink-light:    #838E83;
-  --color-border:       #9EAB9F;
-  --color-border-light: #C4CEC5;
-  --color-ai-bg:        #E8ECF0;
-  --color-ai-text:      #5A6E82;
-  --color-human-avatar-bg:   #DDD8CE;
-  --color-human-avatar-text: #6B5E4A;
-  --color-track-add-bg:     #DFF0E1;
-  --color-track-add-text:   #285E30;
-  --color-track-add-line:   #4E8F56;
-  --color-track-del-bg:     #F0E4E3;
-  --color-track-del-text:   #7A3530;
-  --color-track-del-line:   #A05850;
-  --color-highlight-bg:     #EAE8C8;
-  --color-highlight-border: #B0AC6A;
-  --font-serif: 'Playfair Display', Georgia, serif;
-  --font-sans:  'Lato', system-ui, sans-serif;
-}
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Editor — Reference Implementation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400&family=Lato:wght@300;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      :root {
+        --color-bg: #b8c2ba;
+        --color-chrome: #aebab1;
+        --color-chrome-dark: #a6b2a9;
+        --color-page: #f8f9f6;
+        --color-sage: #5c7a62;
+        --color-sage-light: #dde6de;
+        --color-sage-mid: #8ead93;
+        --color-sage-dark: #3a5c3f;
+        --color-ink: #222722;
+        --color-ink-mid: #4e564e;
+        --color-ink-light: #838e83;
+        --color-border: #9eab9f;
+        --color-border-light: #c4cec5;
+        --color-ai-bg: #e8ecf0;
+        --color-ai-text: #5a6e82;
+        --color-human-avatar-bg: #ddd8ce;
+        --color-human-avatar-text: #6b5e4a;
+        --color-track-add-bg: #dff0e1;
+        --color-track-add-text: #285e30;
+        --color-track-add-line: #4e8f56;
+        --color-track-del-bg: #f0e4e3;
+        --color-track-del-text: #7a3530;
+        --color-track-del-line: #a05850;
+        --color-highlight-bg: #eae8c8;
+        --color-highlight-border: #b0ac6a;
+        --font-serif: 'Playfair Display', Georgia, serif;
+        --font-sans: 'Lato', system-ui, sans-serif;
+      }
 
-body { font-family: var(--font-sans); background: #eee; padding: 24px; }
+      body {
+        font-family: var(--font-sans);
+        background: #eee;
+        padding: 24px;
+      }
 
-/* ---- APP SHELL ---- */
-.app { background: var(--color-bg); border-radius: 10px; overflow: hidden; border: 0.5px solid var(--color-border); max-width: 960px; margin: 0 auto; }
+      /* ---- APP SHELL ---- */
+      .app {
+        background: var(--color-bg);
+        border-radius: 10px;
+        overflow: hidden;
+        border: 0.5px solid var(--color-border);
+        max-width: 960px;
+        margin: 0 auto;
+      }
 
-/* ---- TOOLBAR ---- */
-.toolbar { background: var(--color-chrome); border-bottom: 0.5px solid var(--color-border); padding: 0 16px; height: 42px; display: flex; align-items: center; gap: 3px; }
-.tb-btn { height: 28px; min-width: 28px; padding: 0 5px; border-radius: 5px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-ink-mid); font-size: 13px; font-family: var(--font-sans); font-weight: 700; }
-.tb-btn:hover { background: var(--color-sage-light); color: var(--color-sage-dark); }
-.tb-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.tb-divider { width: 0.5px; height: 16px; background: var(--color-border); margin: 0 4px; flex-shrink: 0; }
-.editing-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-ink-mid); font-weight: 300; }
-.editing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-sage); }
+      /* ---- TOOLBAR ---- */
+      .toolbar {
+        background: var(--color-chrome);
+        border-bottom: 0.5px solid var(--color-border);
+        padding: 0 16px;
+        height: 42px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .tb-btn {
+        height: 28px;
+        min-width: 28px;
+        padding: 0 5px;
+        border-radius: 5px;
+        border: none;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: var(--color-ink-mid);
+        font-size: 13px;
+        font-family: var(--font-sans);
+        font-weight: 700;
+      }
+      .tb-btn:hover {
+        background: var(--color-sage-light);
+        color: var(--color-sage-dark);
+      }
+      .tb-btn svg {
+        width: 14px;
+        height: 14px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .tb-divider {
+        width: 0.5px;
+        height: 16px;
+        background: var(--color-border);
+        margin: 0 4px;
+        flex-shrink: 0;
+      }
+      .editing-badge {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--color-ink-mid);
+        font-weight: 300;
+      }
+      .editing-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-sage);
+      }
 
-/* ---- EDITOR AREA ---- */
-.editor-area { display: flex; height: 580px; }
+      /* ---- EDITOR AREA ---- */
+      .editor-area {
+        display: flex;
+        height: 580px;
+      }
 
-/* ---- PAGE CANVAS ---- */
-.page-bg { flex: 1; background: var(--color-bg); display: flex; justify-content: center; padding: 36px 24px; overflow-y: auto; }
-.page { background: var(--color-page); width: 100%; max-width: 600px; min-height: 500px; border: 0.5px solid var(--color-border-light); border-radius: 3px; padding: 52px 60px; }
+      /* ---- PAGE CANVAS ---- */
+      .page-bg {
+        flex: 1;
+        background: var(--color-bg);
+        display: flex;
+        justify-content: center;
+        padding: 36px 24px;
+        overflow-y: auto;
+      }
+      .page {
+        background: var(--color-page);
+        width: 100%;
+        max-width: 600px;
+        min-height: 500px;
+        border: 0.5px solid var(--color-border-light);
+        border-radius: 3px;
+        padding: 52px 60px;
+      }
 
-/* ---- DOCUMENT TYPOGRAPHY ---- */
-.doc-title { font-family: var(--font-serif); font-size: 26px; font-weight: 500; color: var(--color-ink); line-height: 1.25; margin-bottom: 4px; }
-.doc-meta { font-size: 11px; color: var(--color-ink-light); margin-bottom: 32px; font-weight: 300; letter-spacing: 0.02em; }
-.doc-h2 { font-family: var(--font-serif); font-size: 16px; font-weight: 500; color: var(--color-ink); margin-bottom: 10px; margin-top: 28px; }
-.doc-p { font-size: 13.5px; font-weight: 300; line-height: 1.85; color: var(--color-ink-mid); margin-bottom: 14px; }
+      /* ---- DOCUMENT TYPOGRAPHY ---- */
+      .doc-title {
+        font-family: var(--font-serif);
+        font-size: 26px;
+        font-weight: 500;
+        color: var(--color-ink);
+        line-height: 1.25;
+        margin-bottom: 4px;
+      }
+      .doc-meta {
+        font-size: 11px;
+        color: var(--color-ink-light);
+        margin-bottom: 32px;
+        font-weight: 300;
+        letter-spacing: 0.02em;
+      }
+      .doc-h2 {
+        font-family: var(--font-serif);
+        font-size: 16px;
+        font-weight: 500;
+        color: var(--color-ink);
+        margin-bottom: 10px;
+        margin-top: 28px;
+      }
+      .doc-p {
+        font-size: 13.5px;
+        font-weight: 300;
+        line-height: 1.85;
+        color: var(--color-ink-mid);
+        margin-bottom: 14px;
+      }
 
-/* ---- INLINE TEXT STATES ---- */
-.highlight { background: var(--color-highlight-bg); border-bottom: 1.5px solid var(--color-highlight-border); }
-.track-add { background: var(--color-track-add-bg); color: var(--color-track-add-text); text-decoration: underline; text-decoration-color: var(--color-track-add-line); text-underline-offset: 2px; }
-.track-del { background: var(--color-track-del-bg); color: var(--color-track-del-text); text-decoration: line-through; text-decoration-color: var(--color-track-del-line); }
+      /* ---- INLINE TEXT STATES ---- */
+      .highlight {
+        background: var(--color-highlight-bg);
+        border-bottom: 1.5px solid var(--color-highlight-border);
+      }
+      .track-add {
+        background: var(--color-track-add-bg);
+        color: var(--color-track-add-text);
+        text-decoration: underline;
+        text-decoration-color: var(--color-track-add-line);
+        text-underline-offset: 2px;
+      }
+      .track-del {
+        background: var(--color-track-del-bg);
+        color: var(--color-track-del-text);
+        text-decoration: line-through;
+        text-decoration-color: var(--color-track-del-line);
+      }
 
-/* ---- COMMENT PANEL ---- */
-.comment-panel { width: 260px; background: var(--color-chrome); border-left: 0.5px solid var(--color-border); display: flex; flex-direction: column; overflow-y: auto; }
-.comment-card { margin: 12px 10px 0; border: 0.5px solid var(--color-border); border-radius: 8px; background: var(--color-page); overflow: hidden; }
-.comment-card.active { border-color: var(--color-sage-mid); }
-.comment-header { padding: 10px 12px 8px; border-bottom: 0.5px solid var(--color-border-light); }
-.commenter-row { display: flex; align-items: center; gap: 7px; }
+      /* ---- COMMENT PANEL ---- */
+      .comment-panel {
+        width: 260px;
+        background: var(--color-chrome);
+        border-left: 0.5px solid var(--color-border);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+      }
+      .comment-card {
+        margin: 12px 10px 0;
+        border: 0.5px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-page);
+        overflow: hidden;
+      }
+      .comment-card.active {
+        border-color: var(--color-sage-mid);
+      }
+      .comment-header {
+        padding: 10px 12px 8px;
+        border-bottom: 0.5px solid var(--color-border-light);
+      }
+      .commenter-row {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
 
-/* ---- AVATARS ---- */
-.avatar { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex-shrink: 0; }
-.avatar-human { background: var(--color-human-avatar-bg); color: var(--color-human-avatar-text); }
-.avatar-ai { background: var(--color-ai-bg); color: var(--color-ai-text); }
+      /* ---- AVATARS ---- */
+      .avatar {
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: 700;
+        flex-shrink: 0;
+      }
+      .avatar-human {
+        background: var(--color-human-avatar-bg);
+        color: var(--color-human-avatar-text);
+      }
+      .avatar-ai {
+        background: var(--color-ai-bg);
+        color: var(--color-ai-text);
+      }
 
-/* ---- COMMENT CONTENT ---- */
-.commenter-name { font-size: 11px; font-weight: 700; color: var(--color-ink); }
-.comment-time { font-size: 10px; color: var(--color-ink-light); font-weight: 300; margin-left: auto; }
-.comment-text { font-size: 12px; font-weight: 300; line-height: 1.6; color: var(--color-ink-mid); padding: 8px 12px; }
+      /* ---- COMMENT CONTENT ---- */
+      .commenter-name {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--color-ink);
+      }
+      .comment-time {
+        font-size: 10px;
+        color: var(--color-ink-light);
+        font-weight: 300;
+        margin-left: auto;
+      }
+      .comment-text {
+        font-size: 12px;
+        font-weight: 300;
+        line-height: 1.6;
+        color: var(--color-ink-mid);
+        padding: 8px 12px;
+      }
 
-/* ---- AI REPLY BLOCK ---- */
-.comment-reply { padding: 8px 12px 10px; border-top: 0.5px solid var(--color-border-light); background: var(--color-ai-bg); }
-.ai-label { font-size: 10px; font-weight: 700; color: var(--color-ai-text); letter-spacing: 0.04em; margin-bottom: 4px; }
-.ai-response { font-size: 12px; font-weight: 300; line-height: 1.6; color: var(--color-ink-mid); margin-bottom: 8px; }
-.track-actions { display: flex; gap: 6px; }
+      /* ---- AI REPLY BLOCK ---- */
+      .comment-reply {
+        padding: 8px 12px 10px;
+        border-top: 0.5px solid var(--color-border-light);
+        background: var(--color-ai-bg);
+      }
+      .ai-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: var(--color-ai-text);
+        letter-spacing: 0.04em;
+        margin-bottom: 4px;
+      }
+      .ai-response {
+        font-size: 12px;
+        font-weight: 300;
+        line-height: 1.6;
+        color: var(--color-ink-mid);
+        margin-bottom: 8px;
+      }
+      .track-actions {
+        display: flex;
+        gap: 6px;
+      }
 
-/* ---- BUTTONS ---- */
-.btn-accept { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 4px; border: none; background: var(--color-sage); color: #fff; cursor: pointer; }
-.btn-accept:hover { background: var(--color-sage-dark); }
-.btn-reject { font-size: 11px; font-weight: 400; padding: 4px 10px; border-radius: 4px; border: 0.5px solid var(--color-border); background: transparent; color: var(--color-ink-mid); cursor: pointer; }
-.btn-reject:hover { background: var(--color-sage-light); }
+      /* ---- BUTTONS ---- */
+      .btn-accept {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: none;
+        background: var(--color-sage);
+        color: #fff;
+        cursor: pointer;
+      }
+      .btn-accept:hover {
+        background: var(--color-sage-dark);
+      }
+      .btn-reject {
+        font-size: 11px;
+        font-weight: 400;
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 0.5px solid var(--color-border);
+        background: transparent;
+        color: var(--color-ink-mid);
+        cursor: pointer;
+      }
+      .btn-reject:hover {
+        background: var(--color-sage-light);
+      }
 
-/* ---- COMMENT INPUT ---- */
-.comment-input-card { margin: 12px 10px; border: 0.5px solid var(--color-sage-mid); border-radius: 8px; background: var(--color-page); overflow: hidden; }
-.input-header { padding: 8px 12px; border-bottom: 0.5px solid var(--color-border-light); display: flex; align-items: center; gap: 7px; }
-.input-area { width: 100%; border: none; background: transparent; font-family: var(--font-sans); font-size: 12px; font-weight: 300; color: var(--color-ink-mid); padding: 10px 12px; resize: none; outline: none; line-height: 1.6; }
-.input-footer { padding: 8px 12px; border-top: 0.5px solid var(--color-border-light); display: flex; justify-content: flex-end; gap: 6px; }
+      /* ---- COMMENT INPUT ---- */
+      .comment-input-card {
+        margin: 12px 10px;
+        border: 0.5px solid var(--color-sage-mid);
+        border-radius: 8px;
+        background: var(--color-page);
+        overflow: hidden;
+      }
+      .input-header {
+        padding: 8px 12px;
+        border-bottom: 0.5px solid var(--color-border-light);
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .input-area {
+        width: 100%;
+        border: none;
+        background: transparent;
+        font-family: var(--font-sans);
+        font-size: 12px;
+        font-weight: 300;
+        color: var(--color-ink-mid);
+        padding: 10px 12px;
+        resize: none;
+        outline: none;
+        line-height: 1.6;
+      }
+      .input-footer {
+        padding: 8px 12px;
+        border-top: 0.5px solid var(--color-border-light);
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+      }
 
-/* ---- STATUS BAR ---- */
-.statusbar { background: var(--color-chrome-dark); border-top: 0.5px solid var(--color-border); padding: 0 16px; height: 28px; display: flex; align-items: center; gap: 16px; }
-.status-item { font-size: 11px; font-weight: 300; color: var(--color-ink-mid); }
-.status-item b { font-weight: 400; color: var(--color-ink); }
-</style>
-</head>
-<body>
-<div class="app">
-
-  <!-- TOOLBAR -->
-  <div class="toolbar">
-    <button class="tb-btn" style="font-style:italic">I</button>
-    <button class="tb-btn" style="font-weight:700">B</button>
-    <button class="tb-btn" style="text-decoration:underline">U</button>
-    <button class="tb-btn" style="text-decoration:line-through">S</button>
-    <div class="tb-divider"></div>
-    <button class="tb-btn" style="font-size:12px;font-weight:400">H1</button>
-    <button class="tb-btn" style="font-size:12px;font-weight:400">H2</button>
-    <button class="tb-btn" style="font-size:12px;font-weight:400">H3</button>
-    <div class="tb-divider"></div>
-    <button class="tb-btn">
-      <svg viewBox="0 0 16 16"><line x1="3" y1="4" x2="13" y2="4"/><line x1="3" y1="8" x2="13" y2="8"/><line x1="3" y1="12" x2="9" y2="12"/></svg>
-    </button>
-    <button class="tb-btn">
-      <svg viewBox="0 0 16 16"><line x1="5" y1="4" x2="13" y2="4"/><line x1="5" y1="8" x2="13" y2="8"/><line x1="5" y1="12" x2="13" y2="12"/><circle cx="3" cy="4" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="8" r="1" fill="currentColor" stroke="none"/><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none"/></svg>
-    </button>
-    <div class="tb-divider"></div>
-    <button class="tb-btn">
-      <svg viewBox="0 0 16 16"><polyline points="5,8 3,10 5,12"/><polyline points="11,8 13,10 11,12"/><line x1="3" y1="10" x2="13" y2="10"/></svg>
-    </button>
-    <button class="tb-btn">
-      <svg viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="10" rx="1"/><line x1="6" y1="3" x2="6" y2="13"/><line x1="10" y1="3" x2="10" y2="13"/></svg>
-    </button>
-    <div class="editing-badge">
-      <div class="editing-dot"></div>
-      Editing
-    </div>
-  </div>
-
-  <!-- EDITOR AREA -->
-  <div class="editor-area">
-
-    <!-- PAGE CANVAS -->
-    <div class="page-bg">
-      <div class="page">
-        <div class="doc-title">Product Strategy Memo</div>
-        <div class="doc-meta">Last edited by Jordan · 2 minutes ago</div>
-
-        <p class="doc-p">The core tension in any platform decision is the gap between what users ask for and what they actually need. We've consistently found that the most durable product choices resist the pull toward feature completeness.</p>
-
-        <h2 class="doc-h2">On prioritization</h2>
-        <p class="doc-p">When we look at retention curves, the signal is clear: <span class="highlight">users who reach the "aha moment" within the first session</span> retain at nearly twice the rate of those who don't.</p>
-
-        <p class="doc-p">The proposed framework: <span class="track-del">must-have, should-have, and nice-to-have</span> <span class="track-add">critical path, high-leverage, and exploratory</span>. Each tier carries a different resourcing commitment.</p>
-
-        <h2 class="doc-h2">Open questions</h2>
-        <p class="doc-p">We haven't resolved how to handle platform requests that are high-effort but strategically important. The current scoring model underweights strategic value in favor of reach.</p>
+      /* ---- STATUS BAR ---- */
+      .statusbar {
+        background: var(--color-chrome-dark);
+        border-top: 0.5px solid var(--color-border);
+        padding: 0 16px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .status-item {
+        font-size: 11px;
+        font-weight: 300;
+        color: var(--color-ink-mid);
+      }
+      .status-item b {
+        font-weight: 400;
+        color: var(--color-ink);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <button class="tb-btn" style="font-style: italic">I</button>
+        <button class="tb-btn" style="font-weight: 700">B</button>
+        <button class="tb-btn" style="text-decoration: underline">U</button>
+        <button class="tb-btn" style="text-decoration: line-through">S</button>
+        <div class="tb-divider"></div>
+        <button class="tb-btn" style="font-size: 12px; font-weight: 400">H1</button>
+        <button class="tb-btn" style="font-size: 12px; font-weight: 400">H2</button>
+        <button class="tb-btn" style="font-size: 12px; font-weight: 400">H3</button>
+        <div class="tb-divider"></div>
+        <button class="tb-btn">
+          <svg viewBox="0 0 16 16">
+            <line x1="3" y1="4" x2="13" y2="4" />
+            <line x1="3" y1="8" x2="13" y2="8" />
+            <line x1="3" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
+        <button class="tb-btn">
+          <svg viewBox="0 0 16 16">
+            <line x1="5" y1="4" x2="13" y2="4" />
+            <line x1="5" y1="8" x2="13" y2="8" />
+            <line x1="5" y1="12" x2="13" y2="12" />
+            <circle cx="3" cy="4" r="1" fill="currentColor" stroke="none" />
+            <circle cx="3" cy="8" r="1" fill="currentColor" stroke="none" />
+            <circle cx="3" cy="12" r="1" fill="currentColor" stroke="none" />
+          </svg>
+        </button>
+        <div class="tb-divider"></div>
+        <button class="tb-btn">
+          <svg viewBox="0 0 16 16">
+            <polyline points="5,8 3,10 5,12" />
+            <polyline points="11,8 13,10 11,12" />
+            <line x1="3" y1="10" x2="13" y2="10" />
+          </svg>
+        </button>
+        <button class="tb-btn">
+          <svg viewBox="0 0 16 16">
+            <rect x="3" y="3" width="10" height="10" rx="1" />
+            <line x1="6" y1="3" x2="6" y2="13" />
+            <line x1="10" y1="3" x2="10" y2="13" />
+          </svg>
+        </button>
+        <div class="editing-badge">
+          <div class="editing-dot"></div>
+          Editing
+        </div>
       </div>
-    </div>
 
-    <!-- COMMENT PANEL -->
-    <div class="comment-panel">
+      <!-- EDITOR AREA -->
+      <div class="editor-area">
+        <!-- PAGE CANVAS -->
+        <div class="page-bg">
+          <div class="page">
+            <div class="doc-title">Product Strategy Memo</div>
+            <div class="doc-meta">Last edited by Jordan · 2 minutes ago</div>
 
-      <!-- Active comment with AI reply -->
-      <div class="comment-card active">
-        <div class="comment-header">
-          <div class="commenter-row">
-            <div class="avatar avatar-human">JK</div>
-            <span class="commenter-name">Jordan</span>
-            <span class="comment-time">2m ago</span>
+            <p class="doc-p">
+              The core tension in any platform decision is the gap between what users ask for and
+              what they actually need. We've consistently found that the most durable product
+              choices resist the pull toward feature completeness.
+            </p>
+
+            <h2 class="doc-h2">On prioritization</h2>
+            <p class="doc-p">
+              When we look at retention curves, the signal is clear:
+              <span class="highlight"
+                >users who reach the "aha moment" within the first session</span
+              >
+              retain at nearly twice the rate of those who don't.
+            </p>
+
+            <p class="doc-p">
+              The proposed framework:
+              <span class="track-del">must-have, should-have, and nice-to-have</span>
+              <span class="track-add">critical path, high-leverage, and exploratory</span>. Each
+              tier carries a different resourcing commitment.
+            </p>
+
+            <h2 class="doc-h2">Open questions</h2>
+            <p class="doc-p">
+              We haven't resolved how to handle platform requests that are high-effort but
+              strategically important. The current scoring model underweights strategic value in
+              favor of reach.
+            </p>
           </div>
         </div>
-        <div class="comment-text">@claude the tier naming feels corporate. can you suggest something cleaner?</div>
-        <div class="comment-reply">
-          <div class="ai-label">claude</div>
-          <div class="ai-response">Suggested rename: "critical path, high-leverage, exploratory" — keeps the hierarchy but reads more like how teams actually think about work.</div>
-          <div class="track-actions">
-            <button class="btn-accept">Accept</button>
-            <button class="btn-reject">Dismiss</button>
+
+        <!-- COMMENT PANEL -->
+        <div class="comment-panel">
+          <!-- Active comment with AI reply -->
+          <div class="comment-card active">
+            <div class="comment-header">
+              <div class="commenter-row">
+                <div class="avatar avatar-human">JK</div>
+                <span class="commenter-name">Jordan</span>
+                <span class="comment-time">2m ago</span>
+              </div>
+            </div>
+            <div class="comment-text">
+              @claude the tier naming feels corporate. can you suggest something cleaner?
+            </div>
+            <div class="comment-reply">
+              <div class="ai-label">claude</div>
+              <div class="ai-response">
+                Suggested rename: "critical path, high-leverage, exploratory" — keeps the hierarchy
+                but reads more like how teams actually think about work.
+              </div>
+              <div class="track-actions">
+                <button class="btn-accept">Accept</button>
+                <button class="btn-reject">Dismiss</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Human-only comment -->
+          <div class="comment-card">
+            <div class="comment-header">
+              <div class="commenter-row">
+                <div class="avatar avatar-human">MR</div>
+                <span class="commenter-name">Maya</span>
+                <span class="comment-time">18m ago</span>
+              </div>
+            </div>
+            <div class="comment-text">
+              The retention stat needs a source before we share this externally.
+            </div>
+          </div>
+
+          <!-- Comment input -->
+          <div class="comment-input-card">
+            <div class="input-header">
+              <div class="avatar avatar-human">JK</div>
+              <span style="font-size: 11px; color: var(--color-ink-light); font-weight: 300"
+                >Add a comment… (Cmd+Enter to post)</span
+              >
+            </div>
+            <textarea class="input-area" rows="3" placeholder="Type @ to tag claude..."></textarea>
+            <div class="input-footer">
+              <button class="btn-reject">Cancel</button>
+              <button class="btn-accept">Comment</button>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Human-only comment -->
-      <div class="comment-card">
-        <div class="comment-header">
-          <div class="commenter-row">
-            <div class="avatar avatar-human">MR</div>
-            <span class="commenter-name">Maya</span>
-            <span class="comment-time">18m ago</span>
-          </div>
-        </div>
-        <div class="comment-text">The retention stat needs a source before we share this externally.</div>
+      <!-- STATUS BAR -->
+      <div class="statusbar">
+        <span class="status-item"><b>Untitled</b></span>
+        <span class="status-item">284 words</span>
+        <span class="status-item">1,621 chars</span>
+        <span class="status-item">Line 1, Col 1</span>
       </div>
-
-      <!-- Comment input -->
-      <div class="comment-input-card">
-        <div class="input-header">
-          <div class="avatar avatar-human">JK</div>
-          <span style="font-size:11px;color:var(--color-ink-light);font-weight:300">Add a comment… (Cmd+Enter to post)</span>
-        </div>
-        <textarea class="input-area" rows="3" placeholder="Type @ to tag claude..."></textarea>
-        <div class="input-footer">
-          <button class="btn-reject">Cancel</button>
-          <button class="btn-accept">Comment</button>
-        </div>
-      </div>
-
     </div>
-  </div>
-
-  <!-- STATUS BAR -->
-  <div class="statusbar">
-    <span class="status-item"><b>Untitled</b></span>
-    <span class="status-item">284 words</span>
-    <span class="status-item">1,621 chars</span>
-    <span class="status-item">Line 1, Col 1</span>
-  </div>
-
-</div>
-</body>
+  </body>
 </html>

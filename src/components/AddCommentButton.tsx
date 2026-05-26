@@ -8,7 +8,13 @@ interface AddCommentButtonProps {
   onAdd: (text: string) => void;
 }
 
-export default function AddCommentButton({ top, left, visible, author, onAdd }: AddCommentButtonProps) {
+export default function AddCommentButton({
+  top,
+  left,
+  visible,
+  author,
+  onAdd,
+}: AddCommentButtonProps) {
   const [composing, setComposing] = useState(false);
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -51,7 +57,10 @@ export default function AddCommentButton({ top, left, visible, author, onAdd }: 
   }
 
   return (
-    <div className="add-comment-compose" style={{ position: 'fixed', top: top - 12, ...(left !== undefined ? { left } : {}) }}>
+    <div
+      className="add-comment-compose"
+      style={{ position: 'fixed', top: top - 12, ...(left !== undefined ? { left } : {}) }}
+    >
       <div className="comment-header">
         <span className="comment-author">{author}</span>
       </div>

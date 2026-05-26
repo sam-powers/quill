@@ -80,7 +80,9 @@ export default function SessionPicker({ open, onClose, onPick }: SessionPickerPr
       <div className="session-picker" onClick={(e) => e.stopPropagation()}>
         <div className="session-picker-header">
           <span>Link Claude Code session</span>
-          <button className="session-picker-close" onClick={onClose} title="Close">×</button>
+          <button className="session-picker-close" onClick={onClose} title="Close">
+            ×
+          </button>
         </div>
 
         <div className="session-picker-body">
@@ -98,9 +100,7 @@ export default function SessionPicker({ open, onClose, onPick }: SessionPickerPr
                 className={`session-row${s.jsonlPath === selectedPath ? ' selected' : ''}`}
                 onClick={() => setSelectedPath(s.jsonlPath)}
               >
-                <div className="session-row-title">
-                  {s.title ?? s.sessionId.slice(0, 8)}
-                </div>
+                <div className="session-row-title">{s.title ?? s.sessionId.slice(0, 8)}</div>
                 <div className="session-row-meta">
                   <span className="session-row-cwd">{s.cwd}</span>
                   <span className="session-row-time">{formatRelativeTime(s.lastUsed)}</span>
@@ -115,15 +115,23 @@ export default function SessionPicker({ open, onClose, onPick }: SessionPickerPr
             {preview && !previewLoading && (
               <>
                 <div className="session-picker-preview-meta">
-                  <div><strong>Session:</strong> <code>{preview.sessionId}</code></div>
-                  <div><strong>cwd:</strong> <code>{preview.cwd}</code></div>
+                  <div>
+                    <strong>Session:</strong> <code>{preview.sessionId}</code>
+                  </div>
+                  <div>
+                    <strong>cwd:</strong> <code>{preview.cwd}</code>
+                  </div>
                 </div>
                 <div className="session-picker-preview-messages">
                   {preview.recentAssistantMessages.length === 0 && (
-                    <div className="session-picker-hint">No assistant messages in this session.</div>
+                    <div className="session-picker-hint">
+                      No assistant messages in this session.
+                    </div>
                   )}
                   {preview.recentAssistantMessages.map((m, i) => (
-                    <div key={i} className="session-preview-msg">{m}</div>
+                    <div key={i} className="session-preview-msg">
+                      {m}
+                    </div>
                   ))}
                 </div>
               </>
@@ -132,7 +140,9 @@ export default function SessionPicker({ open, onClose, onPick }: SessionPickerPr
         </div>
 
         <div className="session-picker-footer">
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
           <button
             className="btn-primary"
             onClick={handleLink}

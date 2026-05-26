@@ -1,4 +1,5 @@
 # Component Spec
+
 Text editor — MCM / Seattle aesthetic
 
 ---
@@ -8,6 +9,7 @@ Text editor — MCM / Seattle aesthetic
 The aesthetic is mid-century modern filtered through a Pacific Northwest sensibility: muted, gray-green, not precious. The document page should feel like paper on a desk. The chrome around it — toolbar, comment panel, status bar — recedes. Nothing competes with the writing.
 
 Two rules that override everything else:
+
 1. The document page is always the brightest surface in the layout.
 2. Sage is the only accent color. Use it only where it earns its place.
 
@@ -21,6 +23,7 @@ Two rules that override everything else:
 **Border:** 0.5px bottom, `--color-border`
 
 **Buttons**
+
 - Size: 28px × 28px minimum, 5px border radius
 - Default state: transparent background, `--color-ink-mid` text/icon
 - Hover state: `--color-sage-light` background, `--color-sage-dark` text
@@ -30,6 +33,7 @@ Two rules that override everything else:
 **Dividers:** 0.5px vertical lines at `--color-border`, 16px tall, `--space-xs` margin each side
 
 **Editing badge**
+
 - Right side of toolbar
 - 6px circle dot in `--color-sage` + "Editing" label in `--color-ink-mid`, weight 300, 12px
 - This is the only persistent sage element in the chrome
@@ -44,6 +48,7 @@ I, B, U, S | H1, H2, H3 | Bullet list, Ordered list | Quote, Code block
 **Background:** `--color-bg` — the muted slate-green that surrounds the page
 
 **Page surface**
+
 - Background: `--color-page` (near-white, slightly cool)
 - Border: 0.5px, `--color-border-light`
 - Border radius: `--radius-sm` (3px — just enough to lift it, not enough to look like a card)
@@ -52,12 +57,14 @@ I, B, U, S | H1, H2, H3 | Bullet list, Ordered list | Quote, Code block
 - No shadow — contrast with background is sufficient
 
 **Document title**
+
 - Font: `--font-serif`, `--text-doc-title` (26px), weight 500
 - Color: `--color-ink`
 - Line height: `--leading-tight`
 - Margin bottom: 4px
 
 **Document metadata line**
+
 - Font: `--font-sans`, `--text-meta` (11px), weight 300
 - Color: `--color-ink-light`
 - Letter spacing: 0.02em
@@ -65,11 +72,13 @@ I, B, U, S | H1, H2, H3 | Bullet list, Ordered list | Quote, Code block
 - Format: "Last edited by [Name] · [time] ago"
 
 **Section headings (H2)**
+
 - Font: `--font-serif`, `--text-doc-h2` (16px), weight 500
 - Color: `--color-ink`
 - Margin top: 28px, margin bottom: 10px
 
 **Body copy**
+
 - Font: `--font-sans`, `--text-body` (13.5px), weight 300
 - Color: `--color-ink-mid`
 - Line height: `--leading-body` (1.85)
@@ -82,11 +91,13 @@ I, B, U, S | H1, H2, H3 | Bullet list, Ordered list | Quote, Code block
 Inline within body copy. Two states only: addition and deletion.
 
 **Addition**
+
 - Background: `--color-track-add-bg`
 - Text color: `--color-track-add-text`
 - Underline: 1px, `--color-track-add-line`, offset 2px
 
 **Deletion**
+
 - Background: `--color-track-del-bg`
 - Text color: `--color-track-del-text`
 - Strikethrough: `--color-track-del-line`
@@ -121,28 +132,34 @@ Cards stack top to bottom, newest at top. 10px horizontal margin, 12px top margi
 Two variants: default and active (focused/selected).
 
 **Container**
+
 - Background: `--color-page`
 - Border: 0.5px, `--color-border` (default) or `--color-sage-mid` (active)
 - Border radius: `--radius-lg` (8px)
 - Overflow hidden
 
 **Header**
+
 - Padding: 10px 12px 8px
 - Bottom border: 0.5px, `--color-border-light`
 - Contains: avatar + commenter name + timestamp
 
 **Avatar**
+
 - Size: 20px × 20px, fully round
 - Human: background `--color-human-avatar-bg`, text `--color-human-avatar-text`, initials 2 chars, 9px, weight 700
 - AI: background `--color-ai-bg`, text `--color-ai-text` — same size and shape as human avatar (AI is a peer in the thread, not visually elevated)
 
 **Commenter name**
+
 - 11px, weight 700, `--color-ink`
 
 **Timestamp**
+
 - 10px, weight 300, `--color-ink-light`, right-aligned
 
 **Comment body**
+
 - Padding: 8px 12px
 - Font: `--font-sans`, `--text-ui` (12px), weight 300
 - Color: `--color-ink-mid`
@@ -155,20 +172,24 @@ Two variants: default and active (focused/selected).
 Appears below the human comment that triggered it, within the same card.
 
 **Container**
+
 - Background: `--color-ai-bg`
 - Top border: 0.5px, `--color-border-light`
 - Padding: 8px 12px 10px
 
 **AI label**
+
 - Text: "claude" (lowercase always)
 - 10px, weight 700, `--color-ai-text`
 - Letter spacing: 0.04em
 - Margin bottom: 4px
 
 **Response text**
+
 - Same type treatment as comment body
 
 **Action buttons** (when AI has made a track change suggestion)
+
 - Accept: filled, `--color-sage` background, white text, 11px weight 700, 4px radius
 - Dismiss: outlined, `--color-border` border, transparent bg, `--color-ink-mid` text, 11px weight 400
 - Gap between buttons: 6px
@@ -180,17 +201,20 @@ Appears below the human comment that triggered it, within the same card.
 Always visible at bottom of comment panel for the active thread.
 
 **Container**
+
 - Background: `--color-page`
 - Border: 0.5px, `--color-sage-mid` (always shown with sage border to indicate it's active)
 - Border radius: `--radius-lg`
 
 **Header row**
+
 - Padding: 8px 12px
 - Bottom border: 0.5px, `--color-border-light`
 - Contains avatar + placeholder text ("Add a comment… (Cmd+Enter to post)")
 - Placeholder: 11px, weight 300, `--color-ink-light`
 
 **Textarea**
+
 - No border, transparent background
 - Font: `--font-sans`, 12px, weight 300, `--color-ink-mid`
 - Padding: 10px 12px
@@ -198,6 +222,7 @@ Always visible at bottom of comment panel for the active thread.
 - Placeholder: "Type @ to tag claude..."
 
 **Footer**
+
 - Padding: 8px 12px
 - Top border: 0.5px, `--color-border-light`
 - Right-aligned button row: Cancel + Comment
@@ -213,6 +238,7 @@ Always visible at bottom of comment panel for the active thread.
 **Border:** 0.5px top, `--color-border`
 
 **Items:** left-aligned, 16px gap
+
 - Doc name (weight 400, `--color-ink`)
 - Word count, char count, cursor position (weight 300, `--color-ink-mid`)
 - Font: `--font-sans`, `--text-meta` (11px)

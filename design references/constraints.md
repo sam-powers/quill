@@ -1,4 +1,5 @@
 # Design Constraints
+
 Text editor — for Claude Code implementation
 
 These are the rules most likely to be violated without explicit instruction. Treat them as hard constraints, not suggestions.

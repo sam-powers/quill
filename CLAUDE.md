@@ -44,6 +44,7 @@ State lives entirely in `App.tsx` — no Redux or context. The editor, comments,
 ### Persistence Model
 
 Every saved file produces two files:
+
 - `<name>.md` — Markdown content from Tiptap
 - `<name>.comments.json` — Sidecar with comments and suggestions (type: `SidecarFile`)
 

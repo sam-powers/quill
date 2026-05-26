@@ -46,7 +46,10 @@ export default function Footer({
 
   return (
     <div className="footer">
-      <span className="footer-filename">{fileName}{isDirty && <span className="footer-dirty">•</span>}</span>
+      <span className="footer-filename">
+        {fileName}
+        {isDirty && <span className="footer-dirty">•</span>}
+      </span>
       <span className="footer-sep">·</span>
       <span>{words.toLocaleString()} words</span>
       <span className="footer-sep">·</span>
