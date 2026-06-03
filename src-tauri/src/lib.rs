@@ -199,6 +199,15 @@ struct ChildHandle {
 #[derive(Default)]
 struct ChildRegistry(Mutex<HashMap<String, Arc<ChildHandle>>>);
 
+/// Holds a deep-link path that arrived before the frontend was ready to receive
+/// the `deep-link-open` event. On a cold start macOS launches the app *because*
+/// of the `quill://open?file=…` URL, and `on_open_url` fires during `.setup()`
+/// — before the WebView has mounted and registered its listener — so the emit is
+/// dropped. We stash the path here and let the frontend pull it on mount via
+/// `take_pending_deep_link`.
+#[derive(Default)]
+struct PendingDeepLink(Mutex<Option<String>>);
+
 fn claude_projects_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not resolve home directory".to_string())?;
     Ok(home.join(".claude").join("projects"))
@@ -817,6 +826,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             app.manage(ChildRegistry::default());
+            app.manage(PendingDeepLink::default());
 
             use tauri::Emitter;
             use tauri_plugin_deep_link::DeepLinkExt;
@@ -824,6 +834,11 @@ pub fn run() {
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
                     if let Some(path) = parse_quill_open(url.as_str()) {
+                        // Buffer for cold start (frontend not yet listening) and
+                        // also emit for the warm-start case where it is.
+                        if let Some(pending) = handle.try_state::<PendingDeepLink>() {
+                            *pending.0.lock().unwrap() = Some(path.clone());
+                        }
                         let _ = handle.emit("deep-link-open", path);
                     }
                 }
@@ -843,6 +858,7 @@ pub fn run() {
             find_session_for_markdown,
             check_session_compacted,
             handle_deep_link,
+            take_pending_deep_link,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -890,4 +906,12 @@ fn percent_decode(s: &str) -> String {
 #[tauri::command]
 fn handle_deep_link(url: String) -> Result<Option<String>, String> {
     Ok(parse_quill_open(&url))
+}
+
+/// Returns and clears any deep-link path buffered during a cold start. The
+/// frontend calls this once on mount to recover a launch URL whose
+/// `deep-link-open` emit was dropped because no listener existed yet.
+#[tauri::command]
+fn take_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>, String> {
+    Ok(pending.0.lock().unwrap().take())
 }

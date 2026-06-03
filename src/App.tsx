@@ -169,6 +169,7 @@ export default function App() {
     (async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event');
+        const { invoke } = await import('@tauri-apps/api/core');
         const handler = await listen<string>('deep-link-open', async (e) => {
           const path = e.payload;
           if (!path) return;
@@ -176,6 +177,14 @@ export default function App() {
           if (result) loadFileResult(result);
         });
         unlisten = handler;
+
+        // Cold start: the launch URL was emitted before this listener existed,
+        // so it was dropped. Drain the buffered path the backend stashed.
+        const pending = await invoke<string | null>('take_pending_deep_link');
+        if (pending) {
+          const result = await openFilePath(pending);
+          if (result) loadFileResult(result);
+        }
       } catch (e) {
         // Non-Tauri context (e.g. plain dev server) — ignore.
       }
