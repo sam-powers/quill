@@ -861,6 +861,7 @@ pub fn run() {
             check_session_compacted,
             handle_deep_link,
             take_pending_deep_link,
+            has_native_menu,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -989,4 +990,15 @@ fn handle_deep_link(url: String) -> Result<Option<String>, String> {
 #[tauri::command]
 fn take_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>, String> {
     Ok(pending.0.lock().unwrap().take())
+}
+
+/// Reports that a real native menu is present. The frontend uses this to yield
+/// the file-operation accelerators (New/Open/Save/Save As) to the menu so they
+/// don't double-fire. It can't infer this from `__TAURI_INTERNALS__`: the e2e
+/// suite mocks that global but has no native menu and must keep handling the
+/// shortcuts in JS, so this command (absent from the e2e IPC mock) is the
+/// authoritative signal.
+#[tauri::command]
+fn has_native_menu() -> bool {
+    true
 }

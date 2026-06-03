@@ -43,6 +43,10 @@ export default function App() {
   const [zoom, setZoom] = useState(1);
   const [, setScrollTick] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  // Whether a real native menu owns the file-operation accelerators. Defaults
+  // to false so JS handles the shortcuts (dev server / e2e); flipped to true
+  // once the backend confirms a native menu exists (see effect below).
+  const [hasNativeMenu, setHasNativeMenu] = useState(false);
 
   const [trackedChanges, setTrackedChanges] = useState<TrackedChangeInfo[]>([]);
   const [aiSession, setAISession] = useState<AISessionBinding | null>(null);
@@ -278,12 +282,32 @@ export default function App() {
     return () => unlisteners.forEach((u) => u());
   }, [handleNew, handleOpen, handleSave, handleSaveAs]);
 
+  // Detect whether a real native menu is present. We can't infer this from
+  // `__TAURI_INTERNALS__`: the e2e suite mocks that global but has no native
+  // menu, so it must keep handling shortcuts in JS. The `has_native_menu`
+  // command exists only in the real backend (the e2e IPC mock returns null for
+  // it), making it the authoritative signal.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const native = await invoke<boolean>('has_native_menu');
+        if (!cancelled) setHasNativeMenu(native === true);
+      } catch {
+        // Non-Tauri context, or command absent (e2e) — keep JS shortcuts.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Keyboard shortcuts. Under Tauri the native menu owns the file-operation
   // accelerators (New/Open/Save/Save As), so we skip them here to avoid
   // double-firing (e.g. opening two file dialogs). Outside Tauri (plain dev
   // server / e2e) there is no native menu, so we keep handling them in JS.
   useEffect(() => {
-    const hasNativeMenu = '__TAURI_INTERNALS__' in window;
     function handleKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
@@ -329,7 +353,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave, handleSaveAs, handleOpen, handleNew]);
+  }, [handleSave, handleSaveAs, handleOpen, handleNew, hasNativeMenu]);
 
   useEffect(() => {
     if (!editor) return;
