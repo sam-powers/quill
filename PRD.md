@@ -89,3 +89,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 - No accounts, sign-in, or cloud sync.
 - No document sharing beyond the local `.md` + sidecar pair.
 - Suggesting mode tracks insertions and deletions only. A replacement is just a delete + insert pair; the `'replacement'` value in `SuggestionType` is declared but never written or read (a vestigial enum value, candidate for cleanup).
+
+## 7. Backlog / known gaps
+
+- **No application menus for file operations.** The app ships no native menu bar, so Open/New/Save are reachable only via keyboard shortcuts (Cmd+O / Cmd+N / Cmd+S). There is no File → Open menu item; a user who doesn't know the shortcut has no way to open a file. Add a native Tauri menu (at minimum File → Open / New / Save / Save As, wired to the same handlers as the shortcuts).
