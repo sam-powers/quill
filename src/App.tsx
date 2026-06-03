@@ -159,7 +159,15 @@ export default function App() {
       editorRef.current?.setContent(result.content);
       setComments(result.sidecar.comments ?? []);
       setSuggestions(result.sidecar.suggestions ?? []);
-      setAISession(result.sidecar.aiSession ?? null);
+      const session = result.sidecar.aiSession ?? null;
+      setAISession(session);
+      // Force the session choice up front: if we opened a non-empty doc with no
+      // linked Claude session, surface the picker so the user binds one (and can
+      // then call @claude from within the doc). Auto-bind is intentionally not
+      // attempted — the user picks.
+      if (!session && result.content.trim().length > 0) {
+        setPickerOpen(true);
+      }
     },
     [setComments, setSuggestions],
   );

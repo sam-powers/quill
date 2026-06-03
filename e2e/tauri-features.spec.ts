@@ -312,6 +312,55 @@ test('deep-link: deep-link-open event opens the file at the payload path', async
   await expect(page.locator('.footer-filename')).toContainText('linked.md');
 });
 
+test('deep-link: opening a doc with no linked session forces the session picker', async ({
+  page,
+}) => {
+  const handler = (cmd: string, args: Record<string, unknown>) => {
+    if (cmd === 'read_file') {
+      const path = args.path as string;
+      if (path === '/tmp/unbound.md') return '# A document with no linked session';
+      throw new Error('sidecar not found');
+    }
+    if (cmd === 'find_session_for_markdown') return null;
+    if (cmd === 'list_claude_sessions') {
+      return [
+        {
+          sessionId: 'sess-abc123',
+          jsonlPath: '/tmp/sess-abc123.jsonl',
+          cwd: '/tmp/project',
+          title: 'My session',
+          lastUsed: Math.floor(Date.now() / 1000),
+        },
+      ];
+    }
+    if (cmd === 'read_claude_session_preview') {
+      return { sessionId: 'sess-abc123', cwd: '/tmp/project', recentAssistantMessages: ['hi'] };
+    }
+    return null;
+  };
+
+  await setupWithIPC(page, { handler });
+  await page.waitForTimeout(200);
+
+  await page.evaluate(() => {
+    (window as unknown as { __emitTauri: (e: string, p: unknown) => void }).__emitTauri(
+      'deep-link-open',
+      '/tmp/unbound.md',
+    );
+  });
+
+  // Doc loads…
+  await expect(page.locator('.ProseMirror')).toContainText('no linked session', { timeout: 3000 });
+  // …and the picker is surfaced so the user must choose a session.
+  await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
+
+  // Picking a session binds it: pick, link, and the picker closes.
+  await page.locator('.session-row').first().click();
+  await expect(page.locator('.session-picker .btn-primary')).toBeEnabled({ timeout: 2000 });
+  await page.locator('.session-picker .btn-primary').click();
+  await expect(page.locator('.session-picker')).toHaveCount(0);
+});
+
 test('deep-link: empty payload is ignored (no crash, no file load)', async ({ page }) => {
   const handler = () => null;
   await setupWithIPC(page, { handler });
