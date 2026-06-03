@@ -155,11 +155,28 @@ export default function App() {
   }, [filePath, isDirty]);
 
   const loadFileResult = useCallback(
-    (result: { content: string; sidecar: SidecarFile; filePath: string }) => {
+    (result: {
+      content: string;
+      sidecar: SidecarFile;
+      filePath: string;
+      sidecarError?: string | null;
+    }) => {
       editorRef.current?.setContent(result.content);
       setComments(result.sidecar.comments ?? []);
       setSuggestions(result.sidecar.suggestions ?? []);
       const session = result.sidecar.aiSession ?? null;
+      // A sidecar that exists but failed to parse means real comments/suggestions
+      // may be at risk. Warn loudly; the save path keeps the on-disk file intact.
+      if (result.sidecarError) {
+        const name = `${result.filePath.replace(/\.md$/i, '')}.comments.json`;
+        window.setTimeout(() => {
+          window.alert(
+            `The comments file for this document could not be read and was left untouched:\n\n${name}\n\n${result.sidecarError}\n\n` +
+              `Your comments and suggestions are NOT loaded, but the file on disk is preserved. ` +
+              `Saving will not overwrite it. Fix or remove the file, then reopen.`,
+          );
+        }, 0);
+      }
       setAISession(session);
       // Force the session choice up front: if we opened a non-empty doc with no
       // linked Claude session, surface the picker so the user binds one (and can
@@ -238,32 +255,62 @@ export default function App() {
     setAISession(null);
   }, [newFile, setComments, setSuggestions]);
 
-  // Keyboard shortcuts
+  // Native application menu (File → New/Open/Save/Save As). The Rust side owns
+  // the accelerators and emits an event per item; we map each to the same
+  // handler the in-app shortcuts use. In a non-Tauri context (plain dev server)
+  // the listeners simply never fire.
   useEffect(() => {
+    const unlisteners: (() => void)[] = [];
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const wire = async (event: string, fn: () => void) => {
+          unlisteners.push(await listen(event, () => fn()));
+        };
+        await wire('menu-new', handleNew);
+        await wire('menu-open', handleOpen);
+        await wire('menu-save', handleSave);
+        await wire('menu-save-as', handleSaveAs);
+      } catch {
+        // Non-Tauri context — no native menu.
+      }
+    })();
+    return () => unlisteners.forEach((u) => u());
+  }, [handleNew, handleOpen, handleSave, handleSaveAs]);
+
+  // Keyboard shortcuts. Under Tauri the native menu owns the file-operation
+  // accelerators (New/Open/Save/Save As), so we skip them here to avoid
+  // double-firing (e.g. opening two file dialogs). Outside Tauri (plain dev
+  // server / e2e) there is no native menu, so we keep handling them in JS.
+  useEffect(() => {
+    const hasNativeMenu = '__TAURI_INTERNALS__' in window;
     function handleKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
       if (!meta) return;
 
-      if (e.key === 's' && e.shiftKey) {
-        e.preventDefault();
-        handleSaveAs();
-        return;
+      if (!hasNativeMenu) {
+        if (e.key === 's' && e.shiftKey) {
+          e.preventDefault();
+          handleSaveAs();
+          return;
+        }
+        if (e.key === 's') {
+          e.preventDefault();
+          handleSave();
+          return;
+        }
+        if (e.key === 'o') {
+          e.preventDefault();
+          handleOpen();
+          return;
+        }
+        if (e.key === 'n') {
+          e.preventDefault();
+          handleNew();
+          return;
+        }
       }
-      if (e.key === 's') {
-        e.preventDefault();
-        handleSave();
-        return;
-      }
-      if (e.key === 'o') {
-        e.preventDefault();
-        handleOpen();
-        return;
-      }
-      if (e.key === 'n') {
-        e.preventDefault();
-        handleNew();
-        return;
-      }
+
       if (e.key === '=' || e.key === '+') {
         e.preventDefault();
         setZoom((z) => Math.min(2.4, Math.round((z + 0.12) * 100) / 100));

@@ -828,6 +828,8 @@ pub fn run() {
             app.manage(ChildRegistry::default());
             app.manage(PendingDeepLink::default());
 
+            build_menu(app.handle())?;
+
             use tauri::Emitter;
             use tauri_plugin_deep_link::DeepLinkExt;
             let handle = app.handle().clone();
@@ -862,6 +864,79 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Build the native application menu and route File-menu clicks to frontend
+/// events. The menu mirrors the existing keyboard shortcuts (Cmd/Ctrl+N/O/S,
+/// Cmd/Ctrl+Shift+S) so file operations are reachable without knowing them.
+fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+    use tauri::Emitter;
+
+    let new_item = MenuItem::with_id(app, "menu-new", "New", true, Some("CmdOrCtrl+N"))?;
+    let open_item = MenuItem::with_id(app, "menu-open", "Open…", true, Some("CmdOrCtrl+O"))?;
+    let save_item = MenuItem::with_id(app, "menu-save", "Save", true, Some("CmdOrCtrl+S"))?;
+    let save_as_item = MenuItem::with_id(
+        app,
+        "menu-save-as",
+        "Save As…",
+        true,
+        Some("CmdOrCtrl+Shift+S"),
+    )?;
+
+    let file_menu = Submenu::with_items(
+        app,
+        "File",
+        true,
+        &[
+            &new_item,
+            &open_item,
+            &PredefinedMenuItem::separator(app)?,
+            &save_item,
+            &save_as_item,
+        ],
+    )?;
+
+    // App menu first so macOS shows the standard application menu (with Quit);
+    // also provides Edit conveniences (copy/paste/select-all/undo/redo).
+    let app_menu = Submenu::with_items(
+        app,
+        "Quill",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, Some("Quill"), None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+
+    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu])?;
+    app.set_menu(menu)?;
+
+    app.on_menu_event(move |app, event| {
+        // The menu item id is exactly the event name the frontend listens for.
+        let id = event.id().as_ref();
+        if matches!(id, "menu-new" | "menu-open" | "menu-save" | "menu-save-as") {
+            let _ = app.emit(id, ());
+        }
+    });
+
+    Ok(())
 }
 
 fn parse_quill_open(url: &str) -> Option<String> {

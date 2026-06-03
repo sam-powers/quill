@@ -91,6 +91,24 @@ describe('useFileManager', () => {
       expect(res!).toBeNull();
       expect(result.current.filePath).toBeNull();
     });
+
+    it('flags sidecarError when the sidecar exists but is invalid JSON', async () => {
+      mockInvoke
+        .mockResolvedValueOnce('# Hello') // read_file (md)
+        .mockResolvedValueOnce('{ not valid json') // read_file (sidecar) — corrupt
+        .mockResolvedValueOnce(null); // find_session_for_markdown
+
+      const { result } = renderHook(() => useFileManager());
+      let res: Awaited<ReturnType<typeof result.current.openFilePath>>;
+      await act(async () => {
+        res = await result.current.openFilePath('/docs/test.md');
+      });
+
+      expect(res!.sidecarError).toBeTruthy();
+      // We keep an empty in-memory model rather than dropping the user's data.
+      expect(res!.sidecar.comments).toEqual([]);
+      expect(res!.sidecar.suggestions).toEqual([]);
+    });
   });
 
   describe('saveFile', () => {
@@ -169,6 +187,77 @@ describe('useFileManager', () => {
       const written = JSON.parse((sidecarCall![1] as { content: string }).content);
       expect(written.version).toBe(2);
       expect(written.comments).toHaveLength(1);
+    });
+
+    it('does not clobber the sidecar on same-path save when it was corrupt on open', async () => {
+      // Open a file whose sidecar is present but unreadable, then save back to
+      // the same path. The corrupt sidecar must be left untouched (no write, no
+      // delete) so the user can recover it.
+      mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+        if (cmd === 'read_file') {
+          const path = (args as { path: string }).path;
+          if (path.endsWith('.comments.json')) return Promise.resolve('{ corrupt');
+          return Promise.resolve('# Hello');
+        }
+        if (cmd === 'find_session_for_markdown') return Promise.resolve(null);
+        return Promise.resolve(undefined);
+      });
+
+      const { result } = renderHook(() => useFileManager());
+      await act(async () => {
+        await result.current.openFilePath('/docs/test.md');
+      });
+
+      mockInvoke.mockClear();
+      await act(async () => {
+        await result.current.saveFile('updated', [], [], null);
+      });
+
+      // The markdown is saved...
+      expect(mockInvoke).toHaveBeenCalledWith('write_file', {
+        path: '/docs/test.md',
+        content: 'updated',
+      });
+      // ...but nothing touches the sidecar path.
+      const touchedSidecar = mockInvoke.mock.calls.some(
+        (call) =>
+          (call[0] === 'write_file' || call[0] === 'delete_file') &&
+          typeof call[1] === 'object' &&
+          (call[1] as { path: string }).path.endsWith('.comments.json'),
+      );
+      expect(touchedSidecar).toBe(false);
+    });
+
+    it('still writes the sidecar on Save As (new path) after a corrupt open', async () => {
+      // A Save As to a different path is a fresh file; the corruption guard only
+      // protects the original path, so the new sidecar writes normally.
+      mockInvoke.mockImplementation((cmd: string, args?: unknown) => {
+        if (cmd === 'read_file') {
+          const path = (args as { path: string }).path;
+          if (path.endsWith('.comments.json')) return Promise.resolve('{ corrupt');
+          return Promise.resolve('# Hello');
+        }
+        if (cmd === 'find_session_for_markdown') return Promise.resolve(null);
+        return Promise.resolve(undefined);
+      });
+
+      const { result } = renderHook(() => useFileManager());
+      await act(async () => {
+        await result.current.openFilePath('/docs/test.md');
+      });
+
+      mockInvoke.mockClear();
+      await act(async () => {
+        await result.current.saveFile('updated', [SAMPLE_COMMENT], [], null, '/docs/other.md');
+      });
+
+      const wroteNewSidecar = mockInvoke.mock.calls.some(
+        (call) =>
+          call[0] === 'write_file' &&
+          typeof call[1] === 'object' &&
+          (call[1] as { path: string }).path === '/docs/other.comments.json',
+      );
+      expect(wroteNewSidecar).toBe(true);
     });
   });
 

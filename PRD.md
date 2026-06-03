@@ -61,8 +61,9 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 
 ### 3.5 Files & persistence
 
-- Standard file operations with keyboard shortcuts: **New (Cmd+N)**, **Open (Cmd+O)**, **Save (Cmd+S)**, **Save As (Cmd+Shift+S)**, via native OS dialogs.
+- Standard file operations available two ways: the native **File menu** (New / Open… / Save / Save As…) and the matching keyboard shortcuts **New (Cmd+N)**, **Open (Cmd+O)**, **Save (Cmd+S)**, **Save As (Cmd+Shift+S)**, both routed through the same handlers and native OS dialogs. The app ships a native menu bar (Quill / File / Edit) so file operations are discoverable, not shortcut-only.
 - Every saved document is **two files**: `<name>.md` (portable Markdown) and `<name>.comments.json` (a sidecar holding comments, suggestions, and the linked AI session). The sidecar is removed on save when it holds nothing.
+- **Corrupt-sidecar safety:** if a document's `.comments.json` exists but can't be parsed, Quill opens the Markdown with an empty review model, **warns the user**, and **refuses to overwrite or delete the unreadable sidecar** on a same-path save — so recoverable comment data is never silently clobbered. A Save As to a new path writes a fresh sidecar normally.
 - **Deep links** (`quill://open?file=…`) open a document directly — e.g. launched from a Claude Code session — and restore its comments, suggestions, and session binding.
 - **Dirty-state indicator** in both the window title and footer (`•`) when there are unsaved changes.
 
@@ -92,4 +93,4 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 
 ## 7. Backlog / known gaps
 
-- **No application menus for file operations.** The app ships no native menu bar, so Open/New/Save are reachable only via keyboard shortcuts (Cmd+O / Cmd+N / Cmd+S). There is no File → Open menu item; a user who doesn't know the shortcut has no way to open a file. Add a native Tauri menu (at minimum File → Open / New / Save / Save As, wired to the same handlers as the shortcuts).
+_(No open items in this section currently.)_

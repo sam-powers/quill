@@ -26,12 +26,14 @@ interface UseFileManagerReturn {
     sidecar: SidecarFile;
     filePath: string;
     autoBound?: boolean;
+    sidecarError?: string | null;
   } | null>;
   openFilePath: (path: string) => Promise<{
     content: string;
     sidecar: SidecarFile;
     filePath: string;
     autoBound?: boolean;
+    sidecarError?: string | null;
   } | null>;
   saveFile: (
     content: string,
@@ -52,6 +54,10 @@ interface UseFileManagerReturn {
 export function useFileManager(): UseFileManagerReturn {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
+  // True when the currently open file's sidecar exists on disk but couldn't be
+  // parsed. We refuse to overwrite/delete it so the user can recover it; only
+  // an explicit Save As (new path) escapes the guard.
+  const [sidecarProtected, setSidecarProtected] = useState(false);
 
   const markDirty = useCallback(() => setIsDirty(true), []);
 
@@ -59,12 +65,28 @@ export function useFileManager(): UseFileManagerReturn {
     try {
       const content = await invoke<string>('read_file', { path });
       let sidecar = emptySidecar();
+      // Distinguish "no sidecar" (fine) from "sidecar exists but is unreadable
+      // / invalid JSON" (dangerous — it holds real comments we must not drop or
+      // silently overwrite). On a load error we block the next save from
+      // clobbering the file so the user can recover it.
+      let sidecarError: string | null = null;
+      let raw: string | undefined;
       try {
-        const raw = await invoke<string>('read_file', { path: sidecarPath(path) });
-        sidecar = normalizeSidecar(JSON.parse(raw));
+        raw = await invoke<string>('read_file', { path: sidecarPath(path) });
       } catch {
-        // No sidecar — that's fine
+        // read_file threw → sidecar simply doesn't exist. That's fine.
       }
+      if (raw !== undefined) {
+        try {
+          sidecar = normalizeSidecar(JSON.parse(raw));
+        } catch (e) {
+          // The sidecar is present but corrupt. Keep an empty in-memory model
+          // but flag the error and protect the on-disk file.
+          sidecarError = e instanceof Error ? e.message : String(e);
+          console.error(`Sidecar at ${sidecarPath(path)} is unreadable:`, e);
+        }
+      }
+      setSidecarProtected(sidecarError !== null);
 
       let autoBound = false;
       if (!sidecar.aiSession) {
@@ -83,7 +105,7 @@ export function useFileManager(): UseFileManagerReturn {
 
       setFilePath(path);
       setIsDirty(autoBound);
-      return { content, sidecar, filePath: path, autoBound };
+      return { content, sidecar, filePath: path, autoBound, sidecarError };
     } catch (e) {
       console.error('Failed to open file:', e);
       return null;
@@ -141,9 +163,16 @@ export function useFileManager(): UseFileManagerReturn {
       if (!targetPath) {
         return null;
       }
+      // Protect a corrupt sidecar from being clobbered. Saving the markdown to
+      // the same path is fine, but skip touching the sidecar so we don't destroy
+      // recoverable comment data. A Save As to a different path (forcePath) is
+      // a fresh file and may write its own sidecar normally.
+      const skipSidecar = sidecarProtected && targetPath === filePath;
       try {
         await invoke('write_file', { path: targetPath, content });
-        await saveSidecar(targetPath, comments, suggestions, aiSession);
+        if (!skipSidecar) {
+          await saveSidecar(targetPath, comments, suggestions, aiSession);
+        }
         setFilePath(targetPath);
         setIsDirty(false);
         return targetPath;
@@ -152,7 +181,7 @@ export function useFileManager(): UseFileManagerReturn {
         return null;
       }
     },
-    [filePath, saveSidecar],
+    [filePath, saveSidecar, sidecarProtected],
   );
 
   const saveFileAs = useCallback(
@@ -181,6 +210,7 @@ export function useFileManager(): UseFileManagerReturn {
   const newFile = useCallback(() => {
     setFilePath(null);
     setIsDirty(false);
+    setSidecarProtected(false);
   }, []);
 
   return {
