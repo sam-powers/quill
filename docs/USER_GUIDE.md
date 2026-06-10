@@ -40,6 +40,14 @@ Click **Suggesting** in the toolbar to switch modes. Now your edits don't change
 
 This is Quill's signature feature, and the one piece that needs a companion tool: the [Claude Code](https://claude.com/claude-code) command-line app must be installed and signed in on the same computer.
 
+**One-time setup.** If you don't have Claude Code yet, open the **Terminal** app (find it with Spotlight: press Cmd+Space and type "Terminal") and paste:
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Then type `claude` and press Return — the first run walks you through signing in with your Claude account in the browser. That's it; Quill finds it automatically from then on.
+
 If a document was written with Claude Code's help, you can put that same AI session to work reviewing it:
 
 1. In the bottom bar, click **🔗 Link to Claude session…** and pick the session that the document came from (Quill usually suggests the right one automatically).
@@ -55,6 +63,23 @@ Phrasing controls how much Claude may touch: by default it edits only the highli
 If your document draws on source material — interview notes, research PDFs, data files — put them in a folder and click **📁 Link reference folder…** in the bottom bar. From then on, every `@claude` request lets Claude read that folder, and it's told which files are in it, so you can ask things like _"@claude check this summary against the interview notes."_
 
 The link is remembered with the document; click the folder name to change it or **×** to unlink.
+
+## Starting from Claude Code
+
+If you write documents _with_ Claude Code, there's a plugin that closes the loop: it adds a command that sends the document you're working on straight into Quill, already linked to the session that wrote it. Install it once (in a terminal, or the same two commands with `/plugin …` inside Claude Code):
+
+```
+claude plugin marketplace add sam-powers/quill
+claude plugin install quill-integration@quill-official
+```
+
+Then, in any Claude Code session:
+
+```
+/quill-integration:open-in-quill draft.md
+```
+
+Quill opens the file with comments, suggestions, and the session link restored — ready for `@claude` questions and revisions. (Launch Quill at least once before the first use, so macOS learns the `quill://` link type.)
 
 ## Tips
 

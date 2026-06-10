@@ -12,7 +12,7 @@
     {
       "name": "quill-integration",
       "description": "Open Markdown documents in Quill from a Claude Code session via the quill:// deep link.",
-      "source": "./quill-integration"
+      "source": "./plugin/quill-integration"
     }
   ]
 }

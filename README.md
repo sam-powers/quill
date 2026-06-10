@@ -41,7 +41,30 @@ Releases are **macOS-only** for now — the `@claude` integration locates the Cl
 
 **macOS:** the app is not yet code-signed, so the first launch is blocked by Gatekeeper. Right-click (or Control-click) **Quill.app** and choose **Open**, then **Open** again in the dialog — only needed once. (Alternatively: `xattr -dr com.apple.quarantine /Applications/Quill.app`.)
 
-The `@claude` features additionally require the [Claude Code](https://claude.com/claude-code) CLI installed on the same machine. New to Quill? Start with the **[User Guide](./docs/USER_GUIDE.md)** — no programming knowledge required.
+New to Quill? Start with the **[User Guide](./docs/USER_GUIDE.md)** — no programming knowledge required.
+
+### Setting up `@claude`
+
+Editing, tracked changes, and comments work standalone. The `@claude` features — AI replies and AI-authored tracked changes — need the [Claude Code](https://claude.com/claude-code) CLI on the same machine:
+
+1. **Install Claude Code** (skip if `claude --version` already works):
+
+   ```bash
+   curl -fsSL https://claude.ai/install.sh | bash
+   ```
+
+2. **Sign in** — run `claude` in a terminal and follow the login prompt. Quill talks to the CLI under your account; there are no API keys to configure.
+
+3. **Launch Quill once** so macOS registers the `quill://` deep-link scheme.
+
+4. **Install the Quill plugin for Claude Code** — this adds the slash command that sends a document from a Claude Code session straight into Quill:
+
+   ```bash
+   claude plugin marketplace add sam-powers/quill
+   claude plugin install quill-integration@quill-official
+   ```
+
+The loop this enables: draft a document with Claude Code, run `/quill-integration:open-in-quill draft.md` in the session, and the document opens in Quill already linked to that session — comment `@claude …` anywhere and the agent that wrote the document answers, or revises it as tracked changes for you to accept or reject. See the [plugin README](./plugin/quill-integration/README.md) for details.
 
 ## Building from source
 
@@ -88,6 +111,7 @@ src/                  React/TypeScript frontend
 src-tauri/            Rust/Tauri backend (file I/O, dialogs, Claude session integration)
 e2e/                  Playwright end-to-end specs
 plugin/               Claude Code plugin that opens files in Quill via deep link
+.claude-plugin/       Marketplace manifest so `claude plugin marketplace add` finds the plugin
 docs/                 Design references and supporting docs
 ```
 
