@@ -361,6 +361,94 @@ test('deep-link: opening a doc with no linked session forces the session picker'
   await expect(page.locator('.session-picker')).toHaveCount(0);
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// 4. Context folder: footer link, sidecar persistence, --add-dir + manifest
+// ────────────────────────────────────────────────────────────────────────────
+
+test('context folder: link via footer, persist in sidecar on save, unlink', async ({ page }) => {
+  const handler = (cmd: string) => {
+    if (cmd === 'show_folder_dialog') return '/refs/research';
+    if (cmd === 'show_save_dialog') return '/tmp/doc.md';
+    return null;
+  };
+
+  await setupWithIPC(page, { handler, captureKey: '__capturedCalls' });
+
+  // Link: the unlinked affordance becomes a chip showing the folder name.
+  await page.locator('.footer-context-binding').click();
+  await expect(page.locator('.footer-context-binding.linked')).toContainText('research', {
+    timeout: 2000,
+  });
+  // Linking marks the document dirty so the binding gets saved.
+  await page.waitForTimeout(150);
+  expect(await page.title()).toContain('•');
+
+  // Save: the sidecar must be written (not deleted) even though there are no
+  // comments/suggestions, and it must carry the folder.
+  await page.keyboard.down('ControlOrMeta');
+  await page.keyboard.press('s');
+  await page.keyboard.up('ControlOrMeta');
+  await page.waitForTimeout(300);
+
+  const calls = await page.evaluate(
+    () =>
+      (window as unknown as Record<string, unknown>).__capturedCalls as {
+        cmd: string;
+        args: Record<string, unknown>;
+      }[],
+  );
+  const sidecarWrite = calls.find(
+    (c) => c.cmd === 'write_file' && (c.args.path as string).endsWith('.comments.json'),
+  );
+  expect(sidecarWrite).toBeDefined();
+  expect(JSON.parse(sidecarWrite!.args.content as string).contextFolder).toBe('/refs/research');
+
+  // Unlink: chip reverts to the link affordance.
+  await page.locator('.footer-context-binding-unlink').click();
+  await expect(page.locator('.footer-context-binding.linked')).toHaveCount(0);
+  await expect(page.locator('.footer-context-binding')).toContainText(/Link reference folder/i);
+});
+
+test('context folder: @claude request passes --add-dir and a file manifest', async ({ page }) => {
+  const handler = (cmd: string, args: Record<string, unknown>) => {
+    if (cmd === 'show_folder_dialog') return '/refs/research';
+    if (cmd === 'list_context_files') return ['sources.md', 'notes/interview.txt'];
+    if (cmd === 'check_session_compacted') return { compacted: true, originalMarkdown: null };
+    if (cmd === 'spawn_claude_resume') {
+      (window as unknown as Record<string, unknown>).__capturedSpawnArgs = args;
+      return 'mock-token-ctx';
+    }
+    return null;
+  };
+
+  await setupWithIPC(page, {
+    handler,
+    testSession: {
+      provider: 'claude-code',
+      sessionId: 'sess-with-folder',
+      cwd: '/tmp/x',
+      generatedAt: '2026-01-01T00:00:00Z',
+    },
+    captureKey: '__capturedCalls',
+  });
+
+  await page.locator('.footer-context-binding').click();
+  await expect(page.locator('.footer-context-binding.linked')).toBeVisible({ timeout: 2000 });
+
+  await fireAIReplyAndCaptureCompactionCall(page);
+
+  const spawnArgs = await page.evaluate(
+    () =>
+      (window as unknown as Record<string, unknown>).__capturedSpawnArgs as Record<string, unknown>,
+  );
+  expect(spawnArgs.addDir).toBe('/refs/research');
+  const prompt = spawnArgs.prompt as string;
+  expect(prompt).toContain('=== REFERENCE FOLDER ===');
+  expect(prompt).toContain('/refs/research');
+  expect(prompt).toContain('- sources.md');
+  expect(prompt).toContain('- notes/interview.txt');
+});
+
 test('deep-link: empty payload is ignored (no crash, no file load)', async ({ page }) => {
   const handler = () => null;
   await setupWithIPC(page, { handler });

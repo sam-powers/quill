@@ -53,6 +53,13 @@ export default function App() {
 
   const [trackedChanges, setTrackedChanges] = useState<TrackedChangeInfo[]>([]);
   const [aiSession, setAISession] = useState<AISessionBinding | null>(null);
+  // Folder of reference documents linked to this doc (persisted in the
+  // sidecar). Claude gets read access to it plus a file manifest per ask.
+  const [contextFolder, setContextFolder] = useState<string | null>(null);
+  // Ref mirror so useClaudeReply reads the live value at ask time without the
+  // hook's options identity churning on every link/unlink.
+  const contextFolderRef = useRef(contextFolder);
+  contextFolderRef.current = contextFolder;
   const [pickerOpen, setPickerOpen] = useState(false);
   // A @claude request made before a session was linked; fired once the user
   // picks a session via the picker we open for them.
@@ -167,6 +174,7 @@ export default function App() {
     getDocMarkdown,
     getRangeTexts,
     applyTrackedEdits,
+    getContextFolder: useCallback(() => contextFolderRef.current, []),
   });
 
   // Re-render on scroll so button top tracks live coordsAtPos
@@ -211,6 +219,7 @@ export default function App() {
         });
       }
       setAISession(session);
+      setContextFolder(result.sidecar.contextFolder ?? null);
       // Force the session choice up front: if we opened a non-empty doc with no
       // linked Claude session, surface the picker so the user binds one (and can
       // then call @claude from within the doc). Auto-bind is intentionally not
@@ -269,15 +278,15 @@ export default function App() {
   }
 
   const handleSaveAs = useCallback(async () => {
-    return saveFileAs(getMarkdown(), comments, suggestions, aiSession);
-  }, [saveFileAs, comments, suggestions, aiSession]);
+    return saveFileAs(getMarkdown(), comments, suggestions, aiSession, contextFolder);
+  }, [saveFileAs, comments, suggestions, aiSession, contextFolder]);
 
   const handleSave = useCallback(async () => {
     if (!filePath) {
       return handleSaveAs();
     }
-    return saveFile(getMarkdown(), comments, suggestions, aiSession);
-  }, [filePath, saveFile, comments, suggestions, aiSession, handleSaveAs]);
+    return saveFile(getMarkdown(), comments, suggestions, aiSession, contextFolder);
+  }, [filePath, saveFile, comments, suggestions, aiSession, contextFolder, handleSaveAs]);
 
   const performOpen = useCallback(async () => {
     const result = await openFile();
@@ -291,6 +300,7 @@ export default function App() {
     setComments([]);
     setSuggestions([]);
     setAISession(null);
+    setContextFolder(null);
   }, [newFile, setComments, setSuggestions]);
 
   // New / Open replace the document, so both run through the unsaved-changes
@@ -567,6 +577,27 @@ export default function App() {
     markDirty();
   }, [markDirty]);
 
+  const handleLinkContextFolder = useCallback(() => {
+    void (async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core');
+        const folder = await invoke<string | null>('show_folder_dialog');
+        if (folder) {
+          setContextFolder(folder);
+          markDirty();
+        }
+      } catch (e) {
+        console.error('Failed to pick context folder:', e);
+        showError('Could not link folder', String(e));
+      }
+    })();
+  }, [markDirty, showError]);
+
+  const handleUnlinkContextFolder = useCallback(() => {
+    setContextFolder(null);
+    markDirty();
+  }, [markDirty]);
+
   return (
     <div className="app">
       <Toolbar
@@ -646,6 +677,9 @@ export default function App() {
         aiSession={aiSession}
         onOpenSessionPicker={() => setPickerOpen(true)}
         onUnlinkSession={handleUnlinkSession}
+        contextFolder={contextFolder}
+        onLinkContextFolder={handleLinkContextFolder}
+        onUnlinkContextFolder={handleUnlinkContextFolder}
       />
 
       <SessionPicker

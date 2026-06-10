@@ -28,6 +28,14 @@ interface UseClaudeReplyOptions {
     edits: QuillEdit[],
     scope: EditScope,
   ) => { applied: number; skipped: number };
+  /** The document's linked context folder, if any (read at ask time). */
+  getContextFolder: () => string | null;
+}
+
+/** The linked context folder and its file manifest, for the prompt. */
+export interface PromptContext {
+  folder: string;
+  files: string[];
 }
 
 const FENCE = '```quill-edits';
@@ -99,6 +107,7 @@ export function buildPrompt(
   ranges: RangeTexts,
   scope: EditScope,
   compaction: CompactionInfo | null,
+  context: PromptContext | null,
 ): string {
   // `userText` is appended explicitly as the final line below. Depending on
   // when React flushed state, the same message may or may not already be the
@@ -146,10 +155,23 @@ export function buildPrompt(
     '',
   ];
 
+  const contextSection = context
+    ? [
+        '=== REFERENCE FOLDER ===',
+        `The user attached a folder of reference documents at: ${context.folder}`,
+        'You have read access to it. When a file below is relevant to the request, read it before answering.',
+        ...(context.files.length > 0
+          ? context.files.map((f) => `- ${f}`)
+          : ['(no readable documents found in the folder)']),
+        '',
+      ]
+    : [];
+
   if (compaction && !compaction.compacted && compaction.originalMarkdown) {
     return [
       ...head,
       ...editProtocol,
+      ...contextSection,
       '=== FULL DOCUMENT (context) ===',
       'Your context is intact; here is the diff between what you originally wrote and what the doc looks like now:',
       '---',
@@ -161,6 +183,7 @@ export function buildPrompt(
   return [
     ...head,
     ...editProtocol,
+    ...contextSection,
     '=== FULL DOCUMENT (context) ===',
     compaction?.compacted
       ? 'Your context was compacted since you wrote this; full current document follows:'
@@ -173,11 +196,13 @@ export function buildPrompt(
 
 interface QuillMock {
   spawn: (
-    args: { sessionId: string; cwd: string; prompt: string },
+    args: { sessionId: string; cwd: string; prompt: string; addDir: string | null },
     onEvent: (event: ChunkEvent) => void,
   ) => string; // returns cancel token
   cancel?: (token: string) => void;
   compaction?: CompactionInfo;
+  /** Manifest returned in place of the list_context_files invoke. */
+  contextFiles?: string[];
 }
 
 declare global {
@@ -205,6 +230,24 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           console.warn('check_session_compacted failed:', e);
         }
       }
+      // Manifest for the linked context folder. A scan failure (folder moved,
+      // permissions) must not block the reply — degrade to no context section.
+      const contextFolder = opts.getContextFolder();
+      let context: PromptContext | null = null;
+      if (contextFolder) {
+        let files: string[] = [];
+        if (mock) {
+          files = mock.contextFiles ?? [];
+        } else {
+          try {
+            files = await invoke<string[]>('list_context_files', { folder: contextFolder });
+          } catch (e) {
+            console.warn('list_context_files failed:', e);
+          }
+        }
+        context = { folder: contextFolder, files };
+      }
+
       const scope = detectScope(userText);
       const ranges = opts.getRangeTexts(comment);
       const prompt = buildPrompt(
@@ -214,6 +257,7 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
         ranges,
         scope,
         compaction,
+        context,
       );
 
       // Per-ask streaming state. We accumulate the raw text and only surface the
@@ -301,7 +345,7 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
 
       if (mock) {
         const token = mock.spawn(
-          { sessionId: binding.sessionId, cwd: binding.cwd, prompt },
+          { sessionId: binding.sessionId, cwd: binding.cwd, prompt, addDir: contextFolder },
           dispatch,
         );
         tokensRef.current.set(replyId, token);
@@ -316,6 +360,7 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           sessionId: binding.sessionId,
           cwd: binding.cwd,
           prompt,
+          addDir: contextFolder,
           onEvent: channel,
         });
         tokensRef.current.set(replyId, cancelToken);

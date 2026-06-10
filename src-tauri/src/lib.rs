@@ -54,6 +54,88 @@ async fn show_save_dialog(
     Ok(path.map(|p| p.to_string()))
 }
 
+#[tauri::command]
+async fn show_folder_dialog(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let path = app.dialog().file().blocking_pick_folder();
+    Ok(path.map(|p| p.to_string()))
+}
+
+/// Document-like extensions worth surfacing in the context-folder manifest.
+/// The manifest only tells Claude what exists — it reads files itself via
+/// `--add-dir` — so this is about keeping the prompt focused, not access.
+const CONTEXT_FILE_EXTENSIONS: &[&str] = &[
+    "md", "markdown", "txt", "rst", "adoc", "org", "csv", "tsv", "json", "yaml", "yml", "toml",
+    "tex", "html", "pdf", "docx",
+];
+
+/// Recursively list document files under `root` as sorted, `/`-separated
+/// relative paths, capped at `max` entries. Hidden entries and dependency /
+/// build directories are skipped so a project folder doesn't flood the prompt.
+fn collect_context_files(root: &std::path::Path, max: usize) -> Vec<String> {
+    const SKIP_DIRS: &[&str] = &["node_modules", "target", "dist", "build", "__pycache__"];
+    // Hard bound on how many files we examine, so a pathological folder
+    // (huge vendored tree with doc-like extensions) can't hang the scan.
+    let scan_limit = max.saturating_mul(50).max(5_000);
+    let mut out: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            if scanned >= scan_limit {
+                stack.clear();
+                break;
+            }
+            scanned += 1;
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                if !SKIP_DIRS.contains(&name.as_ref()) {
+                    stack.push(path);
+                }
+                continue;
+            }
+            let ext_ok = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| CONTEXT_FILE_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false);
+            if !ext_ok {
+                continue;
+            }
+            if let Ok(rel) = path.strip_prefix(root) {
+                let rel = rel
+                    .components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/");
+                out.push(rel);
+            }
+        }
+    }
+    out.sort();
+    out.truncate(max);
+    out
+}
+
+const MAX_CONTEXT_FILES: usize = 200;
+
+#[tauri::command]
+fn list_context_files(folder: String) -> Result<Vec<String>, String> {
+    let root = PathBuf::from(&folder);
+    if !root.is_dir() {
+        return Err(format!("Not a folder: {folder}"));
+    }
+    Ok(collect_context_files(&root, MAX_CONTEXT_FILES))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,6 +329,69 @@ mod tests {
             Ok(path) => assert!(path.is_absolute() || path.exists()),
             Err(msg) => assert!(msg.contains("claude")),
         }
+    }
+
+    // --- collect_context_files ---
+
+    #[test]
+    fn collect_context_files_returns_sorted_relative_paths() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("notes")).unwrap();
+        fs::write(dir.path().join("zebra.md"), "z").unwrap();
+        fs::write(dir.path().join("alpha.txt"), "a").unwrap();
+        fs::write(dir.path().join("notes").join("inner.md"), "i").unwrap();
+
+        let files = collect_context_files(dir.path(), 200);
+        assert_eq!(files, vec!["alpha.txt", "notes/inner.md", "zebra.md"]);
+    }
+
+    #[test]
+    fn collect_context_files_skips_hidden_and_dependency_dirs() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join(".git")).unwrap();
+        fs::create_dir(dir.path().join("node_modules")).unwrap();
+        fs::write(dir.path().join(".git").join("config.md"), "x").unwrap();
+        fs::write(dir.path().join("node_modules").join("readme.md"), "x").unwrap();
+        fs::write(dir.path().join(".hidden.md"), "x").unwrap();
+        fs::write(dir.path().join("visible.md"), "x").unwrap();
+
+        let files = collect_context_files(dir.path(), 200);
+        assert_eq!(files, vec!["visible.md"]);
+    }
+
+    #[test]
+    fn collect_context_files_filters_non_document_extensions() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("doc.md"), "x").unwrap();
+        fs::write(dir.path().join("image.png"), "x").unwrap();
+        fs::write(dir.path().join("binary.exe"), "x").unwrap();
+        fs::write(dir.path().join("no_extension"), "x").unwrap();
+        fs::write(dir.path().join("UPPER.MD"), "x").unwrap();
+
+        let files = collect_context_files(dir.path(), 200);
+        assert_eq!(files, vec!["UPPER.MD", "doc.md"]);
+    }
+
+    #[test]
+    fn collect_context_files_caps_the_manifest() {
+        let dir = tempdir().unwrap();
+        for i in 0..10 {
+            fs::write(dir.path().join(format!("doc{i:02}.md")), "x").unwrap();
+        }
+
+        let files = collect_context_files(dir.path(), 3);
+        // Capped after sorting, so the result is the first N alphabetically.
+        assert_eq!(files, vec!["doc00.md", "doc01.md", "doc02.md"]);
+    }
+
+    #[test]
+    fn list_context_files_rejects_non_folder() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("file.md");
+        fs::write(&file, "x").unwrap();
+
+        assert!(list_context_files(file.to_str().unwrap().to_string()).is_err());
+        assert!(list_context_files("/tmp/quill_test_missing_folder_xyz".to_string()).is_err());
     }
 }
 
@@ -873,6 +1018,7 @@ fn spawn_claude_resume(
     session_id: String,
     cwd: String,
     prompt: String,
+    add_dir: Option<String>,
     on_event: Channel<ChunkEvent>,
 ) -> Result<String, String> {
     let claude_bin = resolve_claude_binary()?;
@@ -883,8 +1029,13 @@ fn spawn_claude_resume(
         .arg("--output-format")
         .arg("stream-json")
         .arg("--include-partial-messages")
-        .arg("--verbose")
-        .arg(&prompt)
+        .arg("--verbose");
+    // Grant read access to the document's linked context folder so Claude can
+    // open the files named in the prompt's manifest.
+    if let Some(dir) = add_dir.as_deref().filter(|d| !d.is_empty()) {
+        cmd.arg("--add-dir").arg(dir);
+    }
+    cmd.arg(&prompt)
         .current_dir(&cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -1067,6 +1218,8 @@ pub fn run() {
             delete_file,
             show_open_dialog,
             show_save_dialog,
+            show_folder_dialog,
+            list_context_files,
             list_claude_sessions,
             read_claude_session_preview,
             spawn_claude_resume,

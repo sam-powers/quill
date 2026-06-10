@@ -56,7 +56,7 @@ State lives entirely in `App.tsx` — no Redux or context. The editor, comments,
 Every saved file produces two files:
 
 - `<name>.md` — Markdown content from Tiptap
-- `<name>.comments.json` — Sidecar with comments and suggestions (type: `SidecarFile`)
+- `<name>.comments.json` — Sidecar with comments, suggestions, the linked AI session, and the linked reference folder (type: `SidecarFile`)
 
 The sidecar is deleted automatically on save if it contains no data.
 
@@ -64,14 +64,15 @@ The sidecar is deleted automatically on save if it contains no data.
 
 The Rust layer (`run()`) registers every IPC command — these are the only Rust entry points, so all file system, dialog, and Claude-process work must go through them:
 
-- **File & dialog:** `read_file`, `write_file`, `delete_file`, `show_open_dialog`, `show_save_dialog`.
-- **Claude session integration:** `list_claude_sessions`, `read_claude_session_preview`, `find_session_for_markdown`, `check_session_compacted`, `spawn_claude_resume`, `cancel_claude_resume`. These read `~/.claude/projects/*.jsonl` to locate and preview sessions, and spawn the `claude` CLI (`--resume … --print --output-format stream-json`) to stream `@claude` replies back over an IPC `Channel`. Spawned children are tracked in a `ChildRegistry` so they can be cancelled.
+- **File & dialog:** `read_file`, `write_file`, `delete_file`, `show_open_dialog`, `show_save_dialog`, `show_folder_dialog`.
+- **Reference folder:** `list_context_files` walks a linked folder (bounded, hidden/dependency dirs skipped, document-like extensions only, capped at 200) to build the prompt manifest.
+- **Claude session integration:** `list_claude_sessions`, `read_claude_session_preview`, `find_session_for_markdown`, `check_session_compacted`, `spawn_claude_resume`, `cancel_claude_resume`. These read `~/.claude/projects/*.jsonl` to locate and preview sessions, and spawn the `claude` CLI (`--resume … --print --output-format stream-json`, plus `--add-dir` when a reference folder is linked) to stream `@claude` replies back over an IPC `Channel`. Spawned children are tracked in a `ChildRegistry` so they can be cancelled.
 - **Deep links:** `handle_deep_link` / `parse_quill_open` parse `quill://open?file=…` URLs.
 - **App lifecycle:** `has_native_menu`, `exit_app`. The menu's Quit item emits `menu-quit` instead of quitting so the frontend's unsaved-changes guard (`guardDirty` in `App.tsx`, with the `AppModal` Save / Don't Save / Cancel dialog) runs first; the same guard covers New, Open, deep links, and window close. Use `AppModal` for any user-facing dialog — `window.alert`/`confirm` are unreliable in Tauri webviews.
 
 ### `@claude` reply flow (`src/hooks/useClaudeReply.ts` + backend)
 
-`useClaudeReply` builds the prompt (anchor text, comment thread, and either a line diff or the full document depending on `check_session_compacted`), calls `spawn_claude_resume`, and consumes the streamed `ChunkEvent`s (`Delta` / `Done` / `Error` / `Cancelled`) to update the AI reply in place. Streaming parsing (fence holdback for the `quill-edits` block) lives in `utils/trackedEdits.ts`.
+`useClaudeReply` builds the prompt (anchor text, comment thread, the reference-folder manifest when one is linked, and either a line diff or the full document depending on `check_session_compacted`), calls `spawn_claude_resume` (passing `addDir` for the reference folder), and consumes the streamed `ChunkEvent`s (`Delta` / `Done` / `Error` / `Cancelled`) to update the AI reply in place. Streaming parsing (fence holdback for the `quill-edits` block) lives in `utils/trackedEdits.ts`.
 
 ### Core Types (`src/types/index.ts`)
 

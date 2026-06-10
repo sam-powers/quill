@@ -12,6 +12,9 @@ interface FooterProps {
   aiSession: AISessionBinding | null;
   onOpenSessionPicker: () => void;
   onUnlinkSession: () => void;
+  contextFolder: string | null;
+  onLinkContextFolder: () => void;
+  onUnlinkContextFolder: () => void;
 }
 
 function countWords(text: string): number {
@@ -31,6 +34,9 @@ export default function Footer({
   aiSession,
   onOpenSessionPicker,
   onUnlinkSession,
+  contextFolder,
+  onLinkContextFolder,
+  onUnlinkContextFolder,
 }: FooterProps) {
   if (!editor) return <div className="footer" />;
 
@@ -82,6 +88,33 @@ export default function Footer({
       </div>
 
       <span className="toolbar-spacer" />
+
+      {contextFolder ? (
+        <span className="footer-context-binding linked">
+          <button
+            className="footer-context-binding-label"
+            onClick={onLinkContextFolder}
+            title={`Reference folder: ${contextFolder} (click to change)`}
+          >
+            📁 {basename(contextFolder)}
+          </button>
+          <button
+            className="footer-context-binding-unlink"
+            onClick={onUnlinkContextFolder}
+            title="Unlink reference folder"
+          >
+            ×
+          </button>
+        </span>
+      ) : (
+        <button
+          className="footer-context-binding"
+          onClick={onLinkContextFolder}
+          title="Link a folder of reference documents Claude can read"
+        >
+          📁 Link reference folder…
+        </button>
+      )}
 
       {aiSession ? (
         <span className="footer-ai-binding linked">

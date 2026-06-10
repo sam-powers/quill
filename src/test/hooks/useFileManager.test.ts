@@ -116,7 +116,7 @@ describe('useFileManager', () => {
       const { result } = renderHook(() => useFileManager());
       let res: string | null;
       await act(async () => {
-        res = await result.current.saveFile('content', [], [], null);
+        res = await result.current.saveFile('content', [], [], null, null);
       });
       expect(res!).toBeNull();
       expect(mockInvoke).not.toHaveBeenCalled();
@@ -135,7 +135,7 @@ describe('useFileManager', () => {
 
       let savedPath: string | null;
       await act(async () => {
-        savedPath = await result.current.saveFile('updated content', [], [], null);
+        savedPath = await result.current.saveFile('updated content', [], [], null, null);
       });
 
       expect(savedPath!).toBe('/docs/test.md');
@@ -151,7 +151,14 @@ describe('useFileManager', () => {
       const { result } = renderHook(() => useFileManager());
       let savedPath: string | null;
       await act(async () => {
-        savedPath = await result.current.saveFile('content', [], [], null, '/override/path.md');
+        savedPath = await result.current.saveFile(
+          'content',
+          [],
+          [],
+          null,
+          null,
+          '/override/path.md',
+        );
       });
       expect(savedPath!).toBe('/override/path.md');
       expect(mockInvoke).toHaveBeenCalledWith('write_file', {
@@ -164,7 +171,7 @@ describe('useFileManager', () => {
       mockInvoke.mockResolvedValue(undefined);
       const { result } = renderHook(() => useFileManager());
       await act(async () => {
-        await result.current.saveFile('content', [], [], null, '/docs/test.md');
+        await result.current.saveFile('content', [], [], null, null, '/docs/test.md');
       });
       expect(mockInvoke).toHaveBeenCalledWith('delete_file', {
         path: '/docs/test.comments.json',
@@ -175,7 +182,7 @@ describe('useFileManager', () => {
       mockInvoke.mockResolvedValue(undefined);
       const { result } = renderHook(() => useFileManager());
       await act(async () => {
-        await result.current.saveFile('content', [SAMPLE_COMMENT], [], null, '/docs/test.md');
+        await result.current.saveFile('content', [SAMPLE_COMMENT], [], null, null, '/docs/test.md');
       });
       const sidecarCall = mockInvoke.mock.calls.find(
         (call) =>
@@ -210,7 +217,7 @@ describe('useFileManager', () => {
 
       mockInvoke.mockClear();
       await act(async () => {
-        await result.current.saveFile('updated', [], [], null);
+        await result.current.saveFile('updated', [], [], null, null);
       });
 
       // The markdown is saved...
@@ -226,6 +233,45 @@ describe('useFileManager', () => {
           (call[1] as { path: string }).path.endsWith('.comments.json'),
       );
       expect(touchedSidecar).toBe(false);
+    });
+
+    it('persists contextFolder in the sidecar and keeps the sidecar alive for it alone', async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const { result } = renderHook(() => useFileManager());
+      await act(async () => {
+        await result.current.saveFile('content', [], [], null, '/refs/folder', '/docs/test.md');
+      });
+
+      // No comments/suggestions/session, but a linked folder — the sidecar must
+      // be written (not deleted) and must carry the folder.
+      expect(mockInvoke).not.toHaveBeenCalledWith('delete_file', expect.anything());
+      const sidecarCall = mockInvoke.mock.calls.find(
+        (call) =>
+          call[0] === 'write_file' && (call[1] as { path: string }).path.endsWith('.comments.json'),
+      );
+      expect(sidecarCall).toBeDefined();
+      const written = JSON.parse((sidecarCall![1] as { content: string }).content);
+      expect(written.contextFolder).toBe('/refs/folder');
+    });
+
+    it('round-trips contextFolder through open', async () => {
+      mockInvoke.mockResolvedValueOnce('# Hello').mockResolvedValueOnce(
+        JSON.stringify({
+          version: 2,
+          comments: [],
+          suggestions: [],
+          aiSession: { provider: 'claude-code', sessionId: 's', cwd: '/x', linkedAt: 'now' },
+          contextFolder: '/refs/research',
+        }),
+      );
+
+      const { result } = renderHook(() => useFileManager());
+      let res: Awaited<ReturnType<typeof result.current.openFilePath>>;
+      await act(async () => {
+        res = await result.current.openFilePath('/docs/test.md');
+      });
+
+      expect(res!.sidecar.contextFolder).toBe('/refs/research');
     });
 
     it('still writes the sidecar on Save As (new path) after a corrupt open', async () => {
@@ -248,7 +294,14 @@ describe('useFileManager', () => {
 
       mockInvoke.mockClear();
       await act(async () => {
-        await result.current.saveFile('updated', [SAMPLE_COMMENT], [], null, '/docs/other.md');
+        await result.current.saveFile(
+          'updated',
+          [SAMPLE_COMMENT],
+          [],
+          null,
+          null,
+          '/docs/other.md',
+        );
       });
 
       const wroteNewSidecar = mockInvoke.mock.calls.some(
@@ -268,7 +321,7 @@ describe('useFileManager', () => {
       const { result } = renderHook(() => useFileManager());
       let savedPath: string | null;
       await act(async () => {
-        savedPath = await result.current.saveFileAs('content', [], [], null);
+        savedPath = await result.current.saveFileAs('content', [], [], null, null);
       });
       expect(savedPath!).toBe('/docs/newfile.md');
     });
@@ -279,7 +332,7 @@ describe('useFileManager', () => {
       const { result } = renderHook(() => useFileManager());
       let savedPath: string | null;
       await act(async () => {
-        savedPath = await result.current.saveFileAs('content', [], [], null);
+        savedPath = await result.current.saveFileAs('content', [], [], null, null);
       });
       expect(savedPath!).toBe('/docs/newfile.md');
     });
@@ -289,7 +342,7 @@ describe('useFileManager', () => {
       const { result } = renderHook(() => useFileManager());
       let savedPath: string | null;
       await act(async () => {
-        savedPath = await result.current.saveFileAs('content', [], [], null);
+        savedPath = await result.current.saveFileAs('content', [], [], null, null);
       });
       expect(savedPath!).toBeNull();
     });
@@ -319,7 +372,7 @@ describe('useFileManager', () => {
       const { result } = renderHook(() => useFileManager(onError));
       let saved: string | null = null;
       await act(async () => {
-        saved = await result.current.saveFile('content', [], [], null, '/docs/out.md');
+        saved = await result.current.saveFile('content', [], [], null, null, '/docs/out.md');
       });
 
       expect(saved).toBeNull();

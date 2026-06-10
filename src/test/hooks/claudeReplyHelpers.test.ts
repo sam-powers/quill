@@ -50,7 +50,15 @@ describe('buildPrompt thread handling', () => {
       { text: 'What does this mean?', authorKind: 'user' },
       { text: 'It refers to the intro.', authorKind: 'ai', author: 'Claude' },
     ]);
-    const prompt = buildPrompt(comment, 'Can you tighten it?', 'doc', RANGES, 'highlight', null);
+    const prompt = buildPrompt(
+      comment,
+      'Can you tighten it?',
+      'doc',
+      RANGES,
+      'highlight',
+      null,
+      null,
+    );
     expect(prompt).toContain('- Sam: What does this mean?');
     expect(prompt).toContain('- Claude: It refers to the intro.');
     expect(prompt.match(/Can you tighten it\?/g)).toHaveLength(1);
@@ -64,7 +72,15 @@ describe('buildPrompt thread handling', () => {
       { text: 'Earlier question', authorKind: 'user' },
       { text: 'Can you tighten it?', authorKind: 'user' },
     ]);
-    const prompt = buildPrompt(comment, 'Can you tighten it?', 'doc', RANGES, 'highlight', null);
+    const prompt = buildPrompt(
+      comment,
+      'Can you tighten it?',
+      'doc',
+      RANGES,
+      'highlight',
+      null,
+      null,
+    );
     expect(prompt.match(/Can you tighten it\?/g)).toHaveLength(1);
     expect(prompt).toContain('- Sam: Earlier question');
   });
@@ -74,7 +90,15 @@ describe('buildPrompt thread handling', () => {
       { text: 'Can you tighten it?', authorKind: 'user' },
       { text: 'Done — see the suggestion.', authorKind: 'ai', author: 'Claude' },
     ]);
-    const prompt = buildPrompt(comment, 'Can you tighten it?', 'doc', RANGES, 'highlight', null);
+    const prompt = buildPrompt(
+      comment,
+      'Can you tighten it?',
+      'doc',
+      RANGES,
+      'highlight',
+      null,
+      null,
+    );
     // Once as history, once as the new message.
     expect(prompt.match(/Can you tighten it\?/g)).toHaveLength(2);
   });
@@ -83,8 +107,52 @@ describe('buildPrompt thread handling', () => {
     const comment = makeComment([
       { text: 'half-streamed ans', authorKind: 'ai', author: 'Claude', pending: true },
     ]);
-    const prompt = buildPrompt(comment, 'follow-up', 'doc', RANGES, 'highlight', null);
+    const prompt = buildPrompt(comment, 'follow-up', 'doc', RANGES, 'highlight', null, null);
     expect(prompt).not.toContain('half-streamed');
+  });
+});
+
+describe('buildPrompt context folder', () => {
+  it('lists the folder and its file manifest when a context is provided', () => {
+    const comment = makeComment([]);
+    const prompt = buildPrompt(comment, 'check my facts', 'doc', RANGES, 'highlight', null, {
+      folder: '/refs/research',
+      files: ['sources.md', 'notes/interview.txt'],
+    });
+    expect(prompt).toContain('=== REFERENCE FOLDER ===');
+    expect(prompt).toContain('/refs/research');
+    expect(prompt).toContain('- sources.md');
+    expect(prompt).toContain('- notes/interview.txt');
+  });
+
+  it('notes an empty folder instead of listing nothing', () => {
+    const comment = makeComment([]);
+    const prompt = buildPrompt(comment, 'check my facts', 'doc', RANGES, 'highlight', null, {
+      folder: '/refs/empty',
+      files: [],
+    });
+    expect(prompt).toContain('(no readable documents found in the folder)');
+  });
+
+  it('omits the section entirely without a context', () => {
+    const comment = makeComment([]);
+    const prompt = buildPrompt(comment, 'check my facts', 'doc', RANGES, 'highlight', null, null);
+    expect(prompt).not.toContain('REFERENCE FOLDER');
+  });
+
+  it('includes the section in the compaction-diff prompt branch too', () => {
+    const comment = makeComment([]);
+    const prompt = buildPrompt(
+      comment,
+      'check my facts',
+      'doc v2',
+      RANGES,
+      'highlight',
+      { compacted: false, originalMarkdown: 'doc v1' },
+      { folder: '/refs/research', files: ['sources.md'] },
+    );
+    expect(prompt).toContain('=== REFERENCE FOLDER ===');
+    expect(prompt).toContain('- sources.md');
   });
 });
 

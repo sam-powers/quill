@@ -15,6 +15,7 @@ function normalizeSidecar(raw: unknown): SidecarFile {
     comments: parsed.comments ?? [],
     suggestions: parsed.suggestions ?? [],
     aiSession: parsed.aiSession,
+    contextFolder: parsed.contextFolder,
   };
 }
 
@@ -41,6 +42,7 @@ interface UseFileManagerReturn {
     comments: Comment[],
     suggestions: Suggestion[],
     aiSession: AISessionBinding | null,
+    contextFolder: string | null,
     forcePath?: string,
   ) => Promise<string | null>;
   saveFileAs: (
@@ -48,6 +50,7 @@ interface UseFileManagerReturn {
     comments: Comment[],
     suggestions: Suggestion[],
     aiSession: AISessionBinding | null,
+    contextFolder: string | null,
   ) => Promise<string | null>;
   newFile: () => void;
 }
@@ -142,9 +145,10 @@ export function useFileManager(
       comments: Comment[],
       suggestions: Suggestion[],
       aiSession: AISessionBinding | null,
+      contextFolder: string | null,
     ) => {
       const scPath = sidecarPath(path);
-      if (comments.length === 0 && suggestions.length === 0 && !aiSession) {
+      if (comments.length === 0 && suggestions.length === 0 && !aiSession && !contextFolder) {
         // Clean up empty sidecar
         try {
           await invoke('delete_file', { path: scPath });
@@ -158,6 +162,7 @@ export function useFileManager(
         comments,
         suggestions,
         ...(aiSession ? { aiSession } : {}),
+        ...(contextFolder ? { contextFolder } : {}),
       };
       await invoke('write_file', { path: scPath, content: JSON.stringify(sidecar, null, 2) });
     },
@@ -170,6 +175,7 @@ export function useFileManager(
       comments: Comment[],
       suggestions: Suggestion[],
       aiSession: AISessionBinding | null,
+      contextFolder: string | null,
       forcePath?: string,
     ): Promise<string | null> => {
       const targetPath = forcePath ?? filePath;
@@ -184,7 +190,7 @@ export function useFileManager(
       try {
         await invoke('write_file', { path: targetPath, content });
         if (!skipSidecar) {
-          await saveSidecar(targetPath, comments, suggestions, aiSession);
+          await saveSidecar(targetPath, comments, suggestions, aiSession, contextFolder);
         }
         setFilePath(targetPath);
         setIsDirty(false);
@@ -204,13 +210,14 @@ export function useFileManager(
       comments: Comment[],
       suggestions: Suggestion[],
       aiSession: AISessionBinding | null,
+      contextFolder: string | null,
     ): Promise<string | null> => {
       try {
         const defaultName = filePath ? basename(filePath) : 'untitled.md';
         const path = await invoke<string | null>('show_save_dialog', { defaultName });
         if (!path) return null;
         const resolvedPath = path.endsWith('.md') ? path : `${path}.md`;
-        return saveFile(content, comments, suggestions, aiSession, resolvedPath);
+        return saveFile(content, comments, suggestions, aiSession, contextFolder, resolvedPath);
       } catch (e) {
         console.error('Failed to save as:', e);
         onError?.('Could not save file', String(e));

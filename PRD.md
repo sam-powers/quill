@@ -51,6 +51,7 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 - In a comment thread, the user can request a reply from Claude. The request is sent to the linked session and the **answer streams back inline** as an AI-authored reply in the thread.
 - Tagging `@claude` **before a session is linked** — in a new comment or a reply — opens the session picker, and the request fires automatically once a session is chosen (it is never silently dropped).
 - The prompt Claude receives includes the **highlighted anchor text**, the **comment thread so far**, and document context.
+- **Reference folder:** a document can be linked to a **folder of reference documents** via the footer ("📁 Link reference folder…"). When set, every `@claude` request grants Claude read access to that folder (`--add-dir`) and the prompt carries a `=== REFERENCE FOLDER ===` section with a manifest of the document-like files inside it (markdown, text, data, and office formats; hidden files and dependency directories skipped; capped at 200 entries), so Claude can pull in relevant sources on demand. The binding persists in the sidecar; the footer chip shows the folder name (click to change, × to unlink). A failed manifest scan degrades to no reference section rather than blocking the reply.
 - **Claude can write edits directly into the document as tracked changes.** When the user asks for a revision (e.g. "tighten this", "fix the grammar"), Claude's reply carries a fenced `quill-edits` block of `find` / `replace` edits alongside its prose. Quill locates each `find` string and applies the replacement as a **tracked change attributed to Claude** — so AI revisions land as ordinary Accept / Reject suggestion cards in the margin, reviewed exactly like a human's. The prose explanation still appears in the thread; only the editing instructions are stripped from it.
   - **Scope is inferred from the request:** by default edits are confined to the **highlighted** anchor text; phrasing like "this paragraph" widens the scope to the surrounding **paragraph**, and "the whole document" to the **entire doc**.
   - Edits whose `find` text can no longer be located in the document are skipped rather than misapplied, and the count is reported.
@@ -65,7 +66,7 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 ### 3.5 Files & persistence
 
 - Standard file operations available two ways: the native **File menu** (New / Open… / Save / Save As…) and the matching keyboard shortcuts **New (Cmd+N)**, **Open (Cmd+O)**, **Save (Cmd+S)**, **Save As (Cmd+Shift+S)**, both routed through the same handlers and native OS dialogs. The app ships a native menu bar (Quill / File / Edit) so file operations are discoverable, not shortcut-only.
-- Every saved document is **two files**: `<name>.md` (portable Markdown) and `<name>.comments.json` (a sidecar holding comments, suggestions, and the linked AI session). The sidecar is removed on save when it holds nothing.
+- Every saved document is **two files**: `<name>.md` (portable Markdown) and `<name>.comments.json` (a sidecar holding comments, suggestions, the linked AI session, and the linked reference folder). The sidecar is removed on save when it holds nothing.
 - **Corrupt-sidecar safety:** if a document's `.comments.json` exists but can't be parsed, Quill opens the Markdown with an empty review model, **warns the user**, and **refuses to overwrite or delete the unreadable sidecar** on a same-path save — so recoverable comment data is never silently clobbered. A Save As to a new path writes a fresh sidecar normally.
 - **Deep links** (`quill://open?file=…`) open a document directly — e.g. launched from a Claude Code session — and restore its comments, suggestions, and session binding.
 - **Dirty-state indicator** in both the window title and footer (`•`) when there are unsaved changes.
@@ -74,7 +75,7 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 
 ### 3.6 Status bar (footer)
 
-Live **filename**, **word count**, **character count**, **line/column**, suggesting badge, zoom control, and the Claude session link control.
+Live **filename**, **word count**, **character count**, **line/column**, suggesting badge, zoom control, the reference-folder link control, and the Claude session link control.
 
 ## 4. Data model (contract)
 
@@ -82,12 +83,12 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 - `Reply` (author, text, `authorKind: user | ai`, pending/error state for streaming AI replies).
 - `Suggestion` (status pending / accepted / rejected). The `type` field allows `insertion | deletion | replacement`, but `replacement` is currently unused — the editor tracks changes as `tracked_insert` / `tracked_delete` marks and never emits a distinct replacement.
 - `AISessionBinding` (`provider: claude-code`, session id, cwd, linkedAt).
-- `SidecarFile` (version 2: comments + suggestions + optional aiSession).
+- `SidecarFile` (version 2: comments + suggestions + optional aiSession + optional contextFolder). The optional fields are backward compatible — older sidecars load unchanged.
 
 ## 5. Platform
 
 - Tauri 2 desktop app (native window, file dialogs, deep-link handling, Claude Code process integration) with a React/TypeScript frontend.
-- Backend exposes a narrow surface: file read/write/delete, open/save dialogs, Claude session commands (find session for a doc, check compaction, spawn/cancel a resumed reply, handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
+- Backend exposes a narrow surface: file read/write/delete, open/save/folder dialogs, reference-folder manifest listing, Claude session commands (find session for a doc, check compaction, spawn/cancel a resumed reply, handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
 
 ## 6. Explicit non-goals (current build)
 

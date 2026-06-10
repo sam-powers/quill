@@ -46,6 +46,11 @@ export interface SidecarFile {
   comments: Comment[];
   suggestions: Suggestion[];
   aiSession?: AISessionBinding;
+  /**
+   * Absolute path to a folder of reference documents for this file. Claude
+   * gets read access to it (`--add-dir`) plus a file manifest in the prompt.
+   */
+  contextFolder?: string;
 }
 
 export interface FileState {
