@@ -488,10 +488,10 @@ export default function App() {
       editor.chain().focus().setTextSelection({ from, to }).setComment(comment.id).run();
       // Add the initial "comment body" as the first reply if user typed text
       if (text) {
-        // The comment has no body field — treat the text as the first reply
-        setTimeout(() => {
-          addReply(comment.id, text, AUTHOR);
-        }, 0);
+        // The comment has no body field — treat the text as the first reply.
+        // Must run before claudeReply.ask() queues its pending AI reply, or
+        // Claude's answer renders above the user's question in the thread.
+        addReply(comment.id, text, AUTHOR);
         // Tagging @claude in the initial comment should ask Claude too — same
         // as tagging it in a later reply. We pass the just-created comment
         // directly rather than going through handleAIReplyRequest, which looks
