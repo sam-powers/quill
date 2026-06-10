@@ -13,6 +13,7 @@ Files are plain `.md` on disk; review metadata rides alongside in a sidecar, so 
 - **Inline comments** — anchor a threaded comment to a text range; reply, resolve, and delete. Comment cards live in the right margin with collision-avoidance so they never overlap.
 - **`@claude` replies** — link a document to its authoring Claude Code session and ask questions in a comment thread. Answers stream back inline. Quill sends a line diff of what changed (or the full document, if the session's context was compacted).
 - **AI-authored tracked changes** — ask Claude in a comment to _revise_ the text ("tighten this", "fix the grammar") and it writes the edits straight into the document as **tracked changes attributed to Claude** — reviewed as ordinary Accept / Reject suggestion cards, just like a human's. Scope follows your phrasing: the highlighted text by default, or "this paragraph" / "the whole document".
+- **Reference folder** — link a document to a folder of source material (notes, research, data files). Every `@claude` request grants Claude read access to that folder and includes a manifest of its contents, so it can pull in the relevant sources before answering.
 - **Deep links** — `quill://open?file=…` opens a document directly, e.g. launched from a Claude Code session, restoring its comments, suggestions, and session binding.
 - **Quality-of-life** — document zoom (60–240%), four persisted color themes, a live status bar (word/char count, line/column, dirty indicator), and standard file shortcuts (New, Open, Save, Save As).
 
@@ -20,14 +21,33 @@ Files are plain `.md` on disk; review metadata rides alongside in a sidecar, so 
 
 Every saved document is two files:
 
-| File                   | Contents                                                              |
-| ---------------------- | --------------------------------------------------------------------- |
-| `<name>.md`            | Portable Markdown — the document itself.                              |
-| `<name>.comments.json` | Sidecar holding comments, suggestions, and the linked Claude session. |
+| File                   | Contents                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `<name>.md`            | Portable Markdown — the document itself.                                                    |
+| `<name>.comments.json` | Sidecar holding comments, suggestions, the linked Claude session, and the reference folder. |
 
 The sidecar is deleted automatically on save when it holds nothing, so a document with no review metadata is just a clean `.md` file.
 
-## Getting started
+## Install
+
+Grab the installer for your platform from the [latest GitHub Release](https://github.com/sam-powers/quill/releases/latest):
+
+| Platform              | File                                   |
+| --------------------- | -------------------------------------- |
+| macOS (Apple Silicon) | `…_aarch64.dmg`                        |
+| macOS (Intel)         | `…_x64.dmg`                            |
+| Windows               | `…_x64-setup.exe` or `…_x64_en-US.msi` |
+| Linux                 | `…_amd64.AppImage`, `.deb`, or `.rpm`  |
+
+**macOS:** the app is not yet code-signed, so the first launch is blocked by Gatekeeper. Right-click (or Control-click) **Quill.app** and choose **Open**, then **Open** again in the dialog — only needed once. (Alternatively: `xattr -dr com.apple.quarantine /Applications/Quill.app`.)
+
+**Windows:** SmartScreen may warn about an unrecognized app — click **More info → Run anyway**.
+
+**Linux:** for the AppImage, `chmod +x` it and run; the `.deb`/`.rpm` install normally.
+
+The `@claude` features additionally require the [Claude Code](https://claude.com/claude-code) CLI installed on the same machine. New to Quill? Start with the **[User Guide](./docs/USER_GUIDE.md)** — no programming knowledge required.
+
+## Building from source
 
 **Prerequisites:** [Node.js](https://nodejs.org) 22+, a [Rust toolchain](https://rustup.rs), and the [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/) for your platform. The `@claude` feature additionally requires the [Claude Code](https://claude.com/claude-code) CLI on your `PATH`.
 
@@ -56,7 +76,7 @@ npx playwright test   # end-to-end (requires browsers: npx playwright install)
 cd src-tauri && cargo test && cargo clippy -- -D warnings && cargo fmt --check
 ```
 
-CI runs the full frontend and Rust suites on every push and pull request to `main`.
+CI runs the full frontend and Rust suites on every push and pull request to `main`. Pushing a version tag (`v*`) triggers the [release workflow](./.github/workflows/release.yml), which builds installers for macOS (Apple Silicon + Intel), Windows, and Linux and attaches them to a **draft** GitHub Release for a maintainer to review and publish.
 
 ### Project layout
 

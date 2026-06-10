@@ -24,6 +24,8 @@ cd src-tauri && cargo test && cargo clippy -- -D warnings && cargo fmt --check
 
 CI (`.github/workflows/ci.yml`) runs the frontend checks (typecheck, eslint, prettier, vitest) and the Rust checks (fmt, clippy, test) on every push and PR to `main`. Match that bar before pushing.
 
+Releases: pushing a `v*` tag triggers `.github/workflows/release.yml` (tauri-action), which builds installers for macOS aarch64/x86_64, Windows, and Linux and attaches them to a **draft** GitHub Release. A maintainer fills in the notes (drafts live in `docs/release-notes/`) and publishes manually. Tags are pushed by the maintainer, not by automation. Keep `version` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` in sync when bumping.
+
 ## Contributing
 
 `main` is the default branch and is **not** committed to directly. To land a change:

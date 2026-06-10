@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Quill",
   "version": "0.1.0",
-  "identifier": "com.root.quill",
+  "identifier": "io.github.sam-powers.quill",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
