@@ -106,23 +106,27 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
           onSelectionRef.current(null);
         }
       },
-      onCreate({ editor }) {
-        toolbarSelectionStore.liveEditor = editor;
-        document.addEventListener(
-          'mousedown',
-          (e) => {
-            const target = e.target as HTMLElement;
-            if (target?.closest('[data-toolbar-button]')) {
-              const { from, to } = editor.state.selection;
-              if (from !== to && !toolbarSelectionStore.value) {
-                toolbarSelectionStore.value = { from, to, editor };
-              }
-            }
-          },
-          true,
-        );
-      },
     });
+
+    // Capture the selection on toolbar mousedown (before the editor loses
+    // focus). An effect keyed on the editor instance — not onCreate — so the
+    // listener is removed and re-bound when useEditor recreates the editor
+    // (StrictMode's dev double-mount) instead of leaking one per instance.
+    useEffect(() => {
+      if (!editor) return;
+      toolbarSelectionStore.liveEditor = editor;
+      const onMouseDown = (e: MouseEvent) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('[data-toolbar-button]')) {
+          const { from, to } = editor.state.selection;
+          if (from !== to && !toolbarSelectionStore.value) {
+            toolbarSelectionStore.value = { from, to, editor };
+          }
+        }
+      };
+      document.addEventListener('mousedown', onMouseDown, true);
+      return () => document.removeEventListener('mousedown', onMouseDown, true);
+    }, [editor]);
 
     // Hand the live editor instance to the parent. Driven by an effect (not
     // onCreate) so that if useEditor recreates the editor — e.g. StrictMode's

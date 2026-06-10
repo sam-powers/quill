@@ -1,11 +1,10 @@
 import { useState, useRef } from 'react';
-import type { AISessionBinding, Comment, Reply } from '../types';
+import type { Comment, Reply } from '../types';
 
 interface CommentCardProps {
   comment: Comment;
   isActive: boolean;
   top: number;
-  aiSession: AISessionBinding | null;
   onReply: (commentId: string, text: string) => void;
   onAIReplyRequest: (commentId: string, userText: string) => void;
   onCancelAIReply: (replyId: string) => void;
@@ -77,7 +76,6 @@ export default function CommentCard({
   comment,
   isActive,
   top,
-  aiSession,
   onReply,
   onAIReplyRequest,
   onCancelAIReply,
@@ -96,7 +94,9 @@ export default function CommentCard({
     const trimmed = replyText.trim();
     if (!trimmed) return;
     onReply(comment.id, trimmed);
-    if (aiSession && /@claude\b/i.test(trimmed)) {
+    // No session linked yet is fine — the request handler opens the session
+    // picker and fires the request once one is chosen.
+    if (/@claude\b/i.test(trimmed)) {
       onAIReplyRequest(comment.id, trimmed);
     }
     setReplyText('');
@@ -123,7 +123,9 @@ export default function CommentCard({
       <div className="comment-thread-line" />
 
       <div className="comment-header">
-        <span className="comment-avatar">{comment.author[0].toUpperCase()}</span>
+        <span className="comment-avatar">
+          {(comment.author.trim().charAt(0) || '?').toUpperCase()}
+        </span>
         <span className="comment-author">{comment.author}</span>
         <span className="comment-time">{timeAgo(comment.createdAt)}</span>
         <button
@@ -176,9 +178,7 @@ export default function CommentCard({
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              aiSession ? 'Reply… (type @claude to ask Claude)' : 'Reply… (Cmd+Enter to post)'
-            }
+            placeholder="Reply… (type @claude to ask Claude)"
             rows={2}
             autoFocus
           />

@@ -14,6 +14,8 @@ import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
 import { getTrackedChanges } from './extensions/TrackChanges';
 import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
+import { basename } from './utils/path';
+import { sidecarPath } from './utils/sidecarPath';
 import type {
   AISessionBinding,
   Comment,
@@ -181,7 +183,7 @@ export default function App() {
 
   // Update macOS title bar dirty indicator
   useEffect(() => {
-    const name = filePath ? (filePath.split('/').pop() ?? 'Untitled') : 'Untitled';
+    const name = filePath ? basename(filePath) : 'Untitled';
     document.title = isDirty ? `${name} •` : name;
   }, [filePath, isDirty]);
 
@@ -199,7 +201,7 @@ export default function App() {
       // A sidecar that exists but failed to parse means real comments/suggestions
       // may be at risk. Warn loudly; the save path keeps the on-disk file intact.
       if (result.sidecarError) {
-        const name = `${result.filePath.replace(/\.md$/i, '')}.comments.json`;
+        const name = sidecarPath(result.filePath);
         setNotice({
           title: 'Comments file could not be read',
           message:
@@ -621,7 +623,6 @@ export default function App() {
           containerRef={commentLayerRef}
           trackedChanges={trackedChanges}
           scrollTop={scrollTop}
-          aiSession={aiSession}
           onReply={(id, text) => addReply(id, text, AUTHOR)}
           onAIReplyRequest={handleAIReplyRequest}
           onCancelAIReply={claudeReply.cancel}

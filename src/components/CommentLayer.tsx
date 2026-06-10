@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Editor } from '@tiptap/react';
-import type { AISessionBinding, Comment, TrackedChangeInfo } from '../types';
+import type { Comment, TrackedChangeInfo } from '../types';
 import CommentCard from './CommentCard';
 import SuggestionCard from './SuggestionCard';
 
@@ -11,7 +11,6 @@ interface CommentLayerProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   trackedChanges: TrackedChangeInfo[];
   scrollTop: number;
-  aiSession: AISessionBinding | null;
   onReply: (commentId: string, text: string) => void;
   onAIReplyRequest: (commentId: string, userText: string) => void;
   onCancelAIReply: (replyId: string) => void;
@@ -87,7 +86,6 @@ export default function CommentLayer({
   containerRef,
   trackedChanges,
   scrollTop,
-  aiSession,
   onReply,
   onAIReplyRequest,
   onCancelAIReply,
@@ -233,7 +231,6 @@ export default function CommentLayer({
               comment={comment}
               isActive={comment.id === activeCommentId}
               top={top}
-              aiSession={aiSession}
               onReply={onReply}
               onAIReplyRequest={onAIReplyRequest}
               onCancelAIReply={onCancelAIReply}

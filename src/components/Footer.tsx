@@ -1,5 +1,6 @@
 import type { Editor } from '@tiptap/react';
 import type { AISessionBinding } from '../types';
+import { basename } from '../utils/path';
 
 interface FooterProps {
   editor: Editor | null;
@@ -42,7 +43,7 @@ export default function Footer({
   const line = Math.max(1, resolved.depth);
   const col = resolved.parentOffset + 1;
 
-  const fileName = filePath ? filePath.split('/').pop() : 'Untitled';
+  const fileName = filePath ? basename(filePath) : 'Untitled';
 
   return (
     <div className="footer">

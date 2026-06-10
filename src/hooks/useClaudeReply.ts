@@ -91,7 +91,8 @@ const SCOPE_INSTRUCTION: Record<EditScope, string> = {
   doc: 'The user asked to edit the whole document — you may edit anywhere in the document.',
 };
 
-function buildPrompt(
+/** Exported for tests. */
+export function buildPrompt(
   comment: Comment,
   userText: string,
   docMarkdown: string,
@@ -99,10 +100,15 @@ function buildPrompt(
   scope: EditScope,
   compaction: CompactionInfo | null,
 ): string {
+  // `userText` is appended explicitly as the final line below. Depending on
+  // when React flushed state, the same message may or may not already be the
+  // thread's last reply — drop that copy so Claude doesn't see it twice.
+  const replies = comment.replies.filter((r) => !r.pending);
+  const last = replies[replies.length - 1];
+  if (last && last.authorKind !== 'ai' && last.text === userText) replies.pop();
+
   const threadLines: string[] = [];
-  for (const reply of comment.replies) {
-    if (reply.id === userText) continue;
-    if (reply.pending) continue;
+  for (const reply of replies) {
     const who = reply.authorKind === 'ai' ? 'Claude' : reply.author;
     threadLines.push(`- ${who}: ${reply.text}`);
   }
