@@ -2,3 +2,4 @@ dist/
 src-tauri/
 node_modules/
 *.lock
+docs/assets/source/frames/

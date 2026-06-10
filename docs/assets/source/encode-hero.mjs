@@ -1,27 +1,25 @@
-// Assembles docs/assets/hero.gif from the frames captured by stage-hero.mjs.
-// gifenc and pngjs are not project dependencies; grab them transiently:
+// Assembles docs/assets/hero.gif from the frames captured by stage-hero.mjs
+// (order and per-frame delays come from frames/frames.json). gifenc writes
+// every frame in full, so gifsicle then does the inter-frame optimization
+// that keeps a ~100-frame GIF shippable.
 //
-//   npm install --no-save gifenc pngjs
+// gifenc, pngjs, and gifsicle are not project dependencies; grab them
+// transiently:
+//
+//   npm install --no-save gifenc pngjs gifsicle
 //   node docs/assets/source/encode-hero.mjs
 import fs from 'fs';
 import path from 'path';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { PNG } from 'pngjs';
 import gifenc from 'gifenc';
+import gifsicle from 'gifsicle';
 
 const { GIFEncoder, quantize, applyPalette } = gifenc;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-const FRAMES = [
-  { file: 't1.png', delay: 2000 },
-  { file: 't2.png', delay: 1800 },
-  { file: 'a1.png', delay: 1800 },
-  { file: 'a2.png', delay: 1500 },
-  { file: 'a3.png', delay: 3600 },
-  { file: 'a4.png', delay: 1500 },
-  { file: 'a5.png', delay: 1300 },
-  { file: 'a6.png', delay: 5000 },
-];
+const manifest = JSON.parse(fs.readFileSync(path.join(HERE, 'frames', 'frames.json'), 'utf8'));
 
 // 2x box downscale: frames are captured at deviceScaleFactor 2 (2200x1480),
 // the GIF ships at the app's native 1100x740.
@@ -47,16 +45,23 @@ function downscale2x(png) {
 }
 
 const gif = GIFEncoder();
-for (const { file, delay } of FRAMES) {
+for (const [n, { file, delay }] of manifest.entries()) {
   const png = PNG.sync.read(fs.readFileSync(path.join(HERE, 'frames', file)));
   const { data, width, height } = downscale2x(png);
   const palette = quantize(data, 256);
   gif.writeFrame(applyPalette(data, palette), width, height, { palette, delay });
-  console.log(file, 'encoded');
+  if ((n + 1) % 20 === 0 || n === manifest.length - 1) {
+    console.log(`${n + 1}/${manifest.length} frames encoded`);
+  }
 }
 gif.finish();
 
+const raw = path.join(HERE, 'frames', 'hero-raw.gif');
 const out = path.join(HERE, '..', 'hero.gif');
-fs.writeFileSync(out, gif.bytes());
-fs.copyFileSync(path.join(HERE, 'frames', 'a6.png'), path.join(HERE, '..', 'hero.png'));
-console.log('hero.gif:', (fs.statSync(out).size / 1024).toFixed(0), 'KB; hero.png updated');
+fs.writeFileSync(raw, gif.bytes());
+console.log('raw gif:', (fs.statSync(raw).size / 1048576).toFixed(1), 'MB; optimizing…');
+execFileSync(gifsicle, ['-O3', '--lossy=40', '-o', out, raw]);
+
+const last = manifest[manifest.length - 1].file;
+fs.copyFileSync(path.join(HERE, 'frames', last), path.join(HERE, '..', 'hero.png'));
+console.log('hero.gif:', (fs.statSync(out).size / 1048576).toFixed(1), 'MB; hero.png updated');

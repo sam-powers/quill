@@ -94,9 +94,6 @@
       .out .bullet {
         color: #98c379;
       }
-      .step2 {
-        display: none;
-      }
       .caret {
         display: inline-block;
         width: 9px;
@@ -121,25 +118,26 @@
           <span class="dim">— new session in ~/work</span>
         </div>
         <div>
-          <span class="prompt">&gt;</span>
-          <span class="cmd">Research Quill and write a doc about how I can use it in my work</span>
+          <span class="prompt">&gt;</span> <span class="cmd" id="ask"></span
+          ><span class="caret" id="c1"></span>
         </div>
-        <div class="out">
+        <div class="out" id="out1a" style="display: none">
           <div>
             <span class="bullet">⏺</span> Researching
             <span class="dim">— README, user guide, plugin docs…</span>
           </div>
+        </div>
+        <div id="out1b" style="display: none">
           <div>
             <span class="bullet">⏺</span> Write(<span class="cmd">using-quill-at-work.md</span>)
             <span class="dim">+84 lines — report drafted</span>
           </div>
         </div>
-        <div class="step2" style="margin-top: 14px">
-          <span class="prompt">&gt;</span>
-          <span class="slash">/quill-integration:open-in-quill</span>
-          <span class="cmd">using-quill-at-work.md</span><span class="caret"></span>
+        <div id="slashline" style="display: none; margin-top: 14px">
+          <span class="prompt">&gt;</span> <span class="slash" id="slashcmd"></span
+          ><span class="caret" id="c2"></span>
         </div>
-        <div class="out step2">
+        <div class="out" id="out2" style="display: none">
           <div>
             <span class="bullet">⏺</span> Opening <span class="cmd">using-quill-at-work.md</span>
             in Quill…
@@ -150,10 +148,12 @@
         </div>
       </div>
     </div>
+    <!-- The page starts with the dynamic lines hidden/empty; stage-hero.mjs
+         reveals and fills them frame by frame to animate the scene. -->
     <script>
-      if (new URLSearchParams(location.search).get('step') === '2') {
-        document.querySelectorAll('.step2').forEach((el) => (el.style.display = 'block'));
-      }
+      window.reveal = (sel) => (document.querySelector(sel).style.display = 'block');
+      window.setText = (sel, text) => (document.querySelector(sel).textContent = text);
+      window.hide = (sel) => (document.querySelector(sel).style.display = 'none');
     </script>
   </body>
 </html>
