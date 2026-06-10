@@ -30,8 +30,8 @@
 
   <g fill="#ffffff" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif">
     <text x="560" y="280" font-size="120" font-weight="700">Quill</text>
-    <text x="563" y="350" font-size="38" opacity="0.92">Track changes and inline comments</text>
-    <text x="563" y="404" font-size="38" opacity="0.92">for Markdown — with an AI reviewer.</text>
+    <text x="563" y="350" font-size="38" opacity="0.92">A collaborative writing space for</text>
+    <text x="563" y="404" font-size="38" opacity="0.92">you and Claude — beyond the CLI.</text>
     <text x="563" y="488" font-size="28" opacity="0.7">macOS · open source · built on Claude Code</text>
   </g>
 </svg>

@@ -94,6 +94,9 @@
       .out .bullet {
         color: #98c379;
       }
+      .step2 {
+        display: none;
+      }
       .caret {
         display: inline-block;
         width: 9px;
@@ -108,34 +111,50 @@
     <div class="window">
       <div class="titlebar">
         <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-        <span class="title">claude — ~/projects/launch</span>
+        <span class="title">claude — ~/work/eu-expansion</span>
       </div>
       <div class="body">
-        <div><span class="dim">~/projects/launch</span></div>
+        <div><span class="dim">~/work/eu-expansion</span></div>
         <div><span class="prompt">❯</span> <span class="cmd">claude</span></div>
         <div class="claude-box">
           <span class="spark">✻</span> Claude Code
-          <span class="dim">— resuming session in ~/projects/launch</span>
+          <span class="dim">— new session in ~/work/eu-expansion</span>
         </div>
         <div>
           <span class="prompt">&gt;</span>
-          <span class="slash">/quill-integration:open-in-quill</span>
-          <span class="cmd">launch-post.md</span><span class="caret" id="caret"></span>
+          <span class="cmd"
+            >Research our EU market entry options and write up a recommendation</span
+          >
         </div>
-        <div class="out" id="out" style="display: none">
+        <div class="out">
           <div>
-            <span class="bullet">⏺</span> Opening <span class="cmd">launch-post.md</span> in Quill…
+            <span class="bullet">⏺</span> Researching
+            <span class="dim">— market size, payments, localization…</span>
+          </div>
+          <div>
+            <span class="bullet">⏺</span> Write(<span class="cmd">eu-market-entry.md</span>)
+            <span class="dim">+96 lines — recommendation drafted</span>
+          </div>
+        </div>
+        <div class="step2" style="margin-top: 14px">
+          <span class="prompt">&gt;</span>
+          <span class="slash">/quill-integration:open-in-quill</span>
+          <span class="cmd">eu-market-entry.md</span><span class="caret"></span>
+        </div>
+        <div class="out step2">
+          <div>
+            <span class="bullet">⏺</span> Opening <span class="cmd">eu-market-entry.md</span> in
+            Quill…
           </div>
           <div class="dim" style="margin-left: 18px">
-            comments, tracked changes, and this session's link restored from the sidecar
+            linked to this session — comment @claude in Quill and this agent answers
           </div>
         </div>
       </div>
     </div>
     <script>
       if (new URLSearchParams(location.search).get('step') === '2') {
-        document.getElementById('out').style.display = 'block';
-        document.getElementById('caret').style.display = 'none';
+        document.querySelectorAll('.step2').forEach((el) => (el.style.display = 'block'));
       }
     </script>
   </body>

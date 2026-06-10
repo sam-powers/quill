@@ -39,7 +39,7 @@ console.log('terminal frames done');
 async function cosmetics(page) {
   await page.evaluate(() => {
     const f = document.querySelector('.footer-filename');
-    if (f) f.childNodes[0].textContent = 'launch-post.md';
+    if (f) f.childNodes[0].textContent = 'eu-market-entry.md';
     document.querySelectorAll('.comment-author').forEach((el) => {
       if (el.textContent === 'Anonymous') el.textContent = 'Sam';
     });
@@ -55,7 +55,7 @@ await page.addInitScript(() => {
   window.__quillTestSession = {
     provider: 'claude-code',
     sessionId: 'a3f8c21b-7d4e-4b2a-9c61-0f5e8d2b4a90',
-    cwd: '/Users/sam/projects/launch',
+    cwd: '/Users/sam/work/eu-expansion',
     generatedAt: '2026-06-09T10:00:00Z',
   };
   // Mock spawn_claude_resume; the script below pushes ChunkEvents by hand so
@@ -75,21 +75,22 @@ await editor.waitFor({ timeout: 10000 });
 await editor.click();
 await page.waitForTimeout(200);
 
-// Type the document (markdown input rules turn "# " into an H1).
-await page.keyboard.type('# Introducing Quill', { delay: 1 });
+// Type the document Claude "wrote" in the terminal scene (markdown input
+// rules turn "# " into an H1).
+await page.keyboard.type('# EU Market Entry — Recommendation', { delay: 1 });
 await page.keyboard.press('Enter');
 await page.keyboard.type(
-  'Quill is a Markdown editor built for the review pass — tracked changes, inline comments, and an AI reviewer that answers in the margin.',
+  'Recommendation: launch in Germany first, with the Netherlands as a fast follow. Both score highest on payment readiness and time-to-localize.',
   { delay: 1 },
 );
 await page.keyboard.press('Enter');
 await page.keyboard.type(
-  'The review process is made significantly faster by Quill, and edits that were suggested by the AI are able to be accepted or rejected by the writer with a single click.',
+  'It was determined by our analysis that an initial launch in Germany would be the option that is most advantageous, due to the fact that it has the largest market in the region and localization requirements are able to be satisfied by our existing tooling.',
   { delay: 1 },
 );
 await page.keyboard.press('Enter');
 await page.keyboard.type(
-  'Every document stays a plain .md file on disk, so your writing is never locked in.',
+  'Pricing should mirror the US tiers at launch; revisit after the first quarter of revenue data.',
   { delay: 1 },
 );
 await page.waitForTimeout(300);
@@ -99,7 +100,7 @@ await page.screenshot({ path: `${OUT}/a1.png` });
 console.log('a1 done');
 
 // Select the wordy paragraph (triple-click) and post an @claude comment.
-const para = page.locator('.ProseMirror p', { hasText: 'review process' });
+const para = page.locator('.ProseMirror p', { hasText: 'determined by our analysis' });
 await para.click({ clickCount: 3 });
 await page.waitForTimeout(200);
 await page.locator('.add-comment-btn').click();
@@ -134,12 +135,12 @@ await page.evaluate(() =>
         summary: 'Tightened the paragraph and made it active voice.',
         edits: [
           {
-            find: 'The review process is made significantly faster by Quill',
-            replace: 'Quill makes the review pass fast',
+            find: 'It was determined by our analysis that an initial launch in Germany would be the option that is most advantageous, due to the fact that',
+            replace: 'Our analysis points to Germany for the initial launch:',
           },
           {
-            find: 'edits that were suggested by the AI are able to be accepted or rejected by the writer',
-            replace: "writers accept or reject the AI's edits",
+            find: 'localization requirements are able to be satisfied by our existing tooling',
+            replace: 'our existing tooling already covers localization',
           },
         ],
       }) + '\n```',

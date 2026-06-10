@@ -1,8 +1,8 @@
 # Quill
 
-A desktop Markdown editor for **reviewing and revising prose**, modeled on Google Docs' suggesting mode. Quill pairs a clean writing surface with three review primitives — **tracked changes**, **inline comments**, and **AI replies from the Claude Code session that wrote the document**.
+A **collaborative writing environment for you and Claude** — take the plans, reports, and docs your agent drafts out of the CLI and work on them together in a real editor, with Google-Docs-style **tracked changes**, **inline comments**, and **@claude replies from the session that wrote the document**.
 
-![Send a draft from Claude Code into Quill, ask @claude in a comment, and review its rewrite as tracked changes you accept or reject](./docs/assets/hero.gif)
+![Claude Code researches and writes a recommendation report, opens it in Quill, and its rewrite arrives as tracked changes you accept or reject](./docs/assets/hero.gif)
 
 Files are plain `.md` on disk; review metadata rides alongside in a sidecar, so the Markdown stays portable and editable anywhere.
 
