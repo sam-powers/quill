@@ -51,7 +51,14 @@ interface UseFileManagerReturn {
   newFile: () => void;
 }
 
-export function useFileManager(): UseFileManagerReturn {
+/**
+ * @param onError Called when a file operation fails so the UI can tell the
+ *   user (open/save errors must not be swallowed — a failed save that looks
+ *   like a successful one loses work). Errors are still logged to the console.
+ */
+export function useFileManager(
+  onError?: (title: string, message: string) => void,
+): UseFileManagerReturn {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   // True when the currently open file's sidecar exists on disk but couldn't be
@@ -61,56 +68,60 @@ export function useFileManager(): UseFileManagerReturn {
 
   const markDirty = useCallback(() => setIsDirty(true), []);
 
-  const openFilePath = useCallback(async (path: string) => {
-    try {
-      const content = await invoke<string>('read_file', { path });
-      let sidecar = emptySidecar();
-      // Distinguish "no sidecar" (fine) from "sidecar exists but is unreadable
-      // / invalid JSON" (dangerous — it holds real comments we must not drop or
-      // silently overwrite). On a load error we block the next save from
-      // clobbering the file so the user can recover it.
-      let sidecarError: string | null = null;
-      let raw: string | undefined;
+  const openFilePath = useCallback(
+    async (path: string) => {
       try {
-        raw = await invoke<string>('read_file', { path: sidecarPath(path) });
-      } catch {
-        // read_file threw → sidecar simply doesn't exist. That's fine.
-      }
-      if (raw !== undefined) {
+        const content = await invoke<string>('read_file', { path });
+        let sidecar = emptySidecar();
+        // Distinguish "no sidecar" (fine) from "sidecar exists but is unreadable
+        // / invalid JSON" (dangerous — it holds real comments we must not drop or
+        // silently overwrite). On a load error we block the next save from
+        // clobbering the file so the user can recover it.
+        let sidecarError: string | null = null;
+        let raw: string | undefined;
         try {
-          sidecar = normalizeSidecar(JSON.parse(raw));
-        } catch (e) {
-          // The sidecar is present but corrupt. Keep an empty in-memory model
-          // but flag the error and protect the on-disk file.
-          sidecarError = e instanceof Error ? e.message : String(e);
-          console.error(`Sidecar at ${sidecarPath(path)} is unreadable:`, e);
+          raw = await invoke<string>('read_file', { path: sidecarPath(path) });
+        } catch {
+          // read_file threw → sidecar simply doesn't exist. That's fine.
         }
-      }
-      setSidecarProtected(sidecarError !== null);
-
-      let autoBound = false;
-      if (!sidecar.aiSession) {
-        try {
-          const match = await invoke<AISessionBinding | null>('find_session_for_markdown', {
-            content,
-          });
-          if (match) {
-            sidecar = { ...sidecar, aiSession: match };
-            autoBound = true;
+        if (raw !== undefined) {
+          try {
+            sidecar = normalizeSidecar(JSON.parse(raw));
+          } catch (e) {
+            // The sidecar is present but corrupt. Keep an empty in-memory model
+            // but flag the error and protect the on-disk file.
+            sidecarError = e instanceof Error ? e.message : String(e);
+            console.error(`Sidecar at ${sidecarPath(path)} is unreadable:`, e);
           }
-        } catch (e) {
-          console.warn('Auto-bind scan failed:', e);
         }
-      }
+        setSidecarProtected(sidecarError !== null);
 
-      setFilePath(path);
-      setIsDirty(autoBound);
-      return { content, sidecar, filePath: path, autoBound, sidecarError };
-    } catch (e) {
-      console.error('Failed to open file:', e);
-      return null;
-    }
-  }, []);
+        let autoBound = false;
+        if (!sidecar.aiSession) {
+          try {
+            const match = await invoke<AISessionBinding | null>('find_session_for_markdown', {
+              content,
+            });
+            if (match) {
+              sidecar = { ...sidecar, aiSession: match };
+              autoBound = true;
+            }
+          } catch (e) {
+            console.warn('Auto-bind scan failed:', e);
+          }
+        }
+
+        setFilePath(path);
+        setIsDirty(autoBound);
+        return { content, sidecar, filePath: path, autoBound, sidecarError };
+      } catch (e) {
+        console.error('Failed to open file:', e);
+        onError?.('Could not open file', `${path}\n\n${String(e)}`);
+        return null;
+      }
+    },
+    [onError],
+  );
 
   const openFile = useCallback(async () => {
     try {
@@ -119,9 +130,10 @@ export function useFileManager(): UseFileManagerReturn {
       return openFilePath(path);
     } catch (e) {
       console.error('Failed to open file dialog:', e);
+      onError?.('Could not open file', String(e));
       return null;
     }
-  }, [openFilePath]);
+  }, [openFilePath, onError]);
 
   const saveSidecar = useCallback(
     async (
@@ -178,10 +190,11 @@ export function useFileManager(): UseFileManagerReturn {
         return targetPath;
       } catch (e) {
         console.error('Failed to save file:', e);
+        onError?.('Could not save file', `${targetPath}\n\n${String(e)}`);
         return null;
       }
     },
-    [filePath, saveSidecar, sidecarProtected],
+    [filePath, saveSidecar, sidecarProtected, onError],
   );
 
   const saveFileAs = useCallback(
@@ -201,10 +214,11 @@ export function useFileManager(): UseFileManagerReturn {
         return saveFile(content, comments, suggestions, aiSession, resolvedPath);
       } catch (e) {
         console.error('Failed to save as:', e);
+        onError?.('Could not save file', String(e));
         return null;
       }
     },
-    [filePath, saveFile],
+    [filePath, saveFile, onError],
   );
 
   const newFile = useCallback(() => {

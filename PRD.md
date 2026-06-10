@@ -68,6 +68,8 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 - **Corrupt-sidecar safety:** if a document's `.comments.json` exists but can't be parsed, Quill opens the Markdown with an empty review model, **warns the user**, and **refuses to overwrite or delete the unreadable sidecar** on a same-path save — so recoverable comment data is never silently clobbered. A Save As to a new path writes a fresh sidecar normally.
 - **Deep links** (`quill://open?file=…`) open a document directly — e.g. launched from a Claude Code session — and restore its comments, suggestions, and session binding.
 - **Dirty-state indicator** in both the window title and footer (`•`) when there are unsaved changes.
+- **Unsaved-changes guard:** any action that would discard a dirty document — File → New, File → Open, an incoming deep link, closing the window, or quitting the app — first asks **Save / Don't Save / Cancel** in an in-app dialog. Choosing Save runs the normal save (including Save As for an untitled doc) and only proceeds if it succeeds; cancelling the save dialog keeps the document open. (The menu's Quit item routes through this guard rather than quitting directly.)
+- **File errors are surfaced:** a failed open or save shows an in-app error dialog naming the file and the underlying OS error — a failed save is never silent (the dirty indicator also stays on). In-app dialogs are used instead of `window.alert`/`confirm`, which are unreliable in Tauri webviews.
 
 ### 3.6 Status bar (footer)
 
@@ -84,7 +86,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 ## 5. Platform
 
 - Tauri 2 desktop app (native window, file dialogs, deep-link handling, Claude Code process integration) with a React/TypeScript frontend.
-- Backend exposes a narrow surface: file read/write/delete, open/save dialogs, and Claude session commands (find session for a doc, check compaction, spawn/cancel a resumed reply, handle deep links).
+- Backend exposes a narrow surface: file read/write/delete, open/save dialogs, Claude session commands (find session for a doc, check compaction, spawn/cancel a resumed reply, handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
 
 ## 6. Explicit non-goals (current build)
 

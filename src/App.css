@@ -922,6 +922,64 @@ del.track-delete {
   background: var(--color-accent-light);
 }
 
+.btn-danger {
+  font-size: var(--text-meta);
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: #b54134;
+  color: #fff;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+.btn-danger:hover {
+  background: #9a3329;
+}
+
+/* ── App modal (confirmations & notices) ────────────────────────── */
+.app-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Above the session picker (z-index 100) so a notice raised while the
+     picker is open stays readable. */
+  z-index: 200;
+}
+.app-modal {
+  width: 420px;
+  max-width: 90vw;
+  background: var(--color-page);
+  border-radius: 8px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  font-family: var(--font-sans);
+}
+.app-modal-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.app-modal-message {
+  margin: 0 0 16px;
+  font-size: var(--text-meta);
+  font-weight: 300;
+  color: var(--color-ink-mid);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.app-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* ── Show resolved button ───────────────────────────────────────── */
 .show-resolved-btn {
   display: block;

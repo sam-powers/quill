@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import CommentLayer from './components/CommentLayer';
 import AddCommentButton from './components/AddCommentButton';
 import SessionPicker from './components/SessionPicker';
+import AppModal from './components/AppModal';
 import { useFileManager } from './hooks/useFileManager';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
@@ -55,8 +56,34 @@ export default function App() {
   // picks a session via the picker we open for them.
   const pendingAIRequestRef = useRef<{ commentId: string; userText: string } | null>(null);
 
+  // In-app dialogs (window.alert/confirm are unreliable in Tauri webviews):
+  // a notice with a single OK, and the unsaved-changes guard holding the
+  // destructive action to run once the user decides what to do with the doc.
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  const [discardGuard, setDiscardGuard] = useState<{ run: () => void } | null>(null);
+
+  const showError = useCallback(
+    (title: string, message: string) => setNotice({ title, message }),
+    [],
+  );
+
   const { filePath, isDirty, markDirty, openFile, openFilePath, saveFile, saveFileAs, newFile } =
-    useFileManager();
+    useFileManager(showError);
+
+  // Live dirty flag for listeners registered once (close-requested, deep-link)
+  // so they don't need to re-register on every edit.
+  const isDirtyRef = useRef(isDirty);
+  isDirtyRef.current = isDirty;
+
+  // Run `action` immediately if there are no unsaved changes; otherwise ask
+  // the user (Save / Don't Save / Cancel) and run it once the doc is safe.
+  const guardDirty = useCallback((action: () => void) => {
+    if (!isDirtyRef.current) {
+      action();
+    } else {
+      setDiscardGuard({ run: action });
+    }
+  }, []);
   const {
     comments,
     setComments,
@@ -173,13 +200,13 @@ export default function App() {
       // may be at risk. Warn loudly; the save path keeps the on-disk file intact.
       if (result.sidecarError) {
         const name = `${result.filePath.replace(/\.md$/i, '')}.comments.json`;
-        window.setTimeout(() => {
-          window.alert(
-            `The comments file for this document could not be read and was left untouched:\n\n${name}\n\n${result.sidecarError}\n\n` +
-              `Your comments and suggestions are NOT loaded, but the file on disk is preserved. ` +
-              `Saving will not overwrite it. Fix or remove the file, then reopen.`,
-          );
-        }, 0);
+        setNotice({
+          title: 'Comments file could not be read',
+          message:
+            `${name}\n\n${result.sidecarError}\n\n` +
+            `Your comments and suggestions are NOT loaded, but the file on disk is preserved. ` +
+            `Saving will not overwrite it. Fix or remove the file, then reopen.`,
+        });
       }
       setAISession(session);
       // Force the session choice up front: if we opened a non-empty doc with no
@@ -199,11 +226,17 @@ export default function App() {
       try {
         const { listen } = await import('@tauri-apps/api/event');
         const { invoke } = await import('@tauri-apps/api/core');
-        const handler = await listen<string>('deep-link-open', async (e) => {
+        const handler = await listen<string>('deep-link-open', (e) => {
           const path = e.payload;
           if (!path) return;
-          const result = await openFilePath(path);
-          if (result) loadFileResult(result);
+          // A deep link can arrive while the user has unsaved work in another
+          // document — that replacement is as destructive as File → Open.
+          guardDirty(() => {
+            void (async () => {
+              const result = await openFilePath(path);
+              if (result) loadFileResult(result);
+            })();
+          });
         });
         unlisten = handler;
 
@@ -221,7 +254,7 @@ export default function App() {
     return () => {
       unlisten?.();
     };
-  }, [openFilePath, loadFileResult]);
+  }, [openFilePath, loadFileResult, guardDirty]);
 
   // Test escape hatch: bind an AI session without going through SessionPicker.
   useEffect(() => {
@@ -234,30 +267,71 @@ export default function App() {
   }
 
   const handleSaveAs = useCallback(async () => {
-    await saveFileAs(getMarkdown(), comments, suggestions, aiSession);
+    return saveFileAs(getMarkdown(), comments, suggestions, aiSession);
   }, [saveFileAs, comments, suggestions, aiSession]);
 
   const handleSave = useCallback(async () => {
     if (!filePath) {
-      await handleSaveAs();
-      return;
+      return handleSaveAs();
     }
-    await saveFile(getMarkdown(), comments, suggestions, aiSession);
+    return saveFile(getMarkdown(), comments, suggestions, aiSession);
   }, [filePath, saveFile, comments, suggestions, aiSession, handleSaveAs]);
 
-  const handleOpen = useCallback(async () => {
+  const performOpen = useCallback(async () => {
     const result = await openFile();
     if (!result) return;
     loadFileResult(result);
   }, [openFile, loadFileResult]);
 
-  const handleNew = useCallback(() => {
+  const performNew = useCallback(() => {
     newFile();
     editorRef.current?.setContent('');
     setComments([]);
     setSuggestions([]);
     setAISession(null);
   }, [newFile, setComments, setSuggestions]);
+
+  // New / Open replace the document, so both run through the unsaved-changes
+  // guard. Quit goes through the same guard, then asks the backend to exit
+  // (the menu's Quit item is custom — emitting an event instead of quitting —
+  // precisely so this guard gets a chance to run).
+  const handleOpen = useCallback(
+    () => guardDirty(() => void performOpen()),
+    [guardDirty, performOpen],
+  );
+
+  const handleNew = useCallback(() => guardDirty(performNew), [guardDirty, performNew]);
+
+  const handleQuit = useCallback(() => {
+    guardDirty(() => {
+      void (async () => {
+        const { invoke } = await import('@tauri-apps/api/core');
+        await invoke('exit_app');
+      })();
+    });
+  }, [guardDirty]);
+
+  // Guard the native window close (traffic-light button): when dirty, prevent
+  // the close and route through the same Save / Don't Save / Cancel dialog.
+  // Outside Tauri (dev server / e2e) getCurrentWindow() throws and no guard is
+  // installed.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      try {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        const win = getCurrentWindow();
+        unlisten = await win.onCloseRequested((event) => {
+          if (!isDirtyRef.current) return;
+          event.preventDefault();
+          setDiscardGuard({ run: () => void win.destroy() });
+        });
+      } catch {
+        // Non-Tauri context.
+      }
+    })();
+    return () => unlisten?.();
+  }, []);
 
   // Native application menu (File → New/Open/Save/Save As). The Rust side owns
   // the accelerators and emits an event per item; we map each to the same
@@ -273,14 +347,15 @@ export default function App() {
         };
         await wire('menu-new', handleNew);
         await wire('menu-open', handleOpen);
-        await wire('menu-save', handleSave);
-        await wire('menu-save-as', handleSaveAs);
+        await wire('menu-save', () => void handleSave());
+        await wire('menu-save-as', () => void handleSaveAs());
+        await wire('menu-quit', handleQuit);
       } catch {
         // Non-Tauri context — no native menu.
       }
     })();
     return () => unlisteners.forEach((u) => u());
-  }, [handleNew, handleOpen, handleSave, handleSaveAs]);
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleQuit]);
 
   // Detect whether a real native menu is present. We can't infer this from
   // `__TAURI_INTERNALS__`: the e2e suite mocks that global but has no native
@@ -577,6 +652,49 @@ export default function App() {
         onClose={() => setPickerOpen(false)}
         onPick={handlePickSession}
       />
+
+      {discardGuard && (
+        <AppModal
+          title="Unsaved changes"
+          message="This document has unsaved changes. Save them before continuing?"
+          buttons={[
+            {
+              label: 'Save',
+              kind: 'primary',
+              onClick: async () => {
+                // Stays open if the save dialog is cancelled or the save
+                // fails — the unsaved document is still at stake.
+                const saved = await handleSave();
+                if (saved) {
+                  setDiscardGuard(null);
+                  discardGuard.run();
+                }
+              },
+            },
+            {
+              label: "Don't Save",
+              kind: 'danger',
+              onClick: () => {
+                setDiscardGuard(null);
+                discardGuard.run();
+              },
+            },
+            {
+              label: 'Cancel',
+              kind: 'ghost',
+              onClick: () => setDiscardGuard(null),
+            },
+          ]}
+        />
+      )}
+
+      {notice && (
+        <AppModal
+          title={notice.title}
+          message={notice.message}
+          buttons={[{ label: 'OK', kind: 'primary', onClick: () => setNotice(null) }]}
+        />
+      )}
     </div>
   );
 }

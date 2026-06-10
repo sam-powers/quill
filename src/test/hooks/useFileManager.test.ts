@@ -295,6 +295,69 @@ describe('useFileManager', () => {
     });
   });
 
+  describe('onError reporting', () => {
+    it('reports an open failure with the path and underlying error', async () => {
+      mockInvoke.mockRejectedValueOnce('Permission denied (os error 13)');
+      const onError = vi.fn();
+
+      const { result } = renderHook(() => useFileManager(onError));
+      await act(async () => {
+        await result.current.openFilePath('/docs/locked.md');
+      });
+
+      expect(onError).toHaveBeenCalledTimes(1);
+      const [title, message] = onError.mock.calls[0];
+      expect(title).toBe('Could not open file');
+      expect(message).toContain('/docs/locked.md');
+      expect(message).toContain('Permission denied');
+    });
+
+    it('reports a save failure with the path and underlying error', async () => {
+      mockInvoke.mockRejectedValueOnce('Disk full (os error 28)');
+      const onError = vi.fn();
+
+      const { result } = renderHook(() => useFileManager(onError));
+      let saved: string | null = null;
+      await act(async () => {
+        saved = await result.current.saveFile('content', [], [], null, '/docs/out.md');
+      });
+
+      expect(saved).toBeNull();
+      expect(onError).toHaveBeenCalledTimes(1);
+      const [title, message] = onError.mock.calls[0];
+      expect(title).toBe('Could not save file');
+      expect(message).toContain('/docs/out.md');
+      expect(message).toContain('Disk full');
+    });
+
+    it('does not report when the open dialog is simply cancelled', async () => {
+      mockInvoke.mockResolvedValueOnce(null); // show_open_dialog → cancelled
+      const onError = vi.fn();
+
+      const { result } = renderHook(() => useFileManager(onError));
+      await act(async () => {
+        await result.current.openFile();
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+
+    it('does not report when the sidecar is merely missing', async () => {
+      mockInvoke
+        .mockResolvedValueOnce('# Hello')
+        .mockRejectedValueOnce(new Error('File not found'))
+        .mockResolvedValueOnce(null); // find_session_for_markdown
+      const onError = vi.fn();
+
+      const { result } = renderHook(() => useFileManager(onError));
+      await act(async () => {
+        await result.current.openFilePath('/docs/test.md');
+      });
+
+      expect(onError).not.toHaveBeenCalled();
+    });
+  });
+
   describe('newFile', () => {
     it('clears filePath and resets isDirty', async () => {
       mockInvoke.mockResolvedValueOnce('content').mockResolvedValueOnce('{}');

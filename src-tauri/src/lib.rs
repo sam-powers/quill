@@ -1076,6 +1076,7 @@ pub fn run() {
             handle_deep_link,
             take_pending_deep_link,
             has_native_menu,
+            exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1088,6 +1089,10 @@ fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
     use tauri::Emitter;
 
+    // Quit is a custom item (not PredefinedMenuItem::quit) so Cmd+Q routes
+    // through the frontend's unsaved-changes guard; the frontend calls
+    // `exit_app` once the document is safe.
+    let quit_item = MenuItem::with_id(app, "menu-quit", "Quit Quill", true, Some("CmdOrCtrl+Q"))?;
     let new_item = MenuItem::with_id(app, "menu-new", "New", true, Some("CmdOrCtrl+N"))?;
     let open_item = MenuItem::with_id(app, "menu-open", "Open…", true, Some("CmdOrCtrl+O"))?;
     let save_item = MenuItem::with_id(app, "menu-save", "Save", true, Some("CmdOrCtrl+S"))?;
@@ -1121,7 +1126,7 @@ fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         &[
             &PredefinedMenuItem::about(app, Some("Quill"), None)?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            &quit_item,
         ],
     )?;
 
@@ -1146,7 +1151,10 @@ fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     app.on_menu_event(move |app, event| {
         // The menu item id is exactly the event name the frontend listens for.
         let id = event.id().as_ref();
-        if matches!(id, "menu-new" | "menu-open" | "menu-save" | "menu-save-as") {
+        if matches!(
+            id,
+            "menu-new" | "menu-open" | "menu-save" | "menu-save-as" | "menu-quit"
+        ) {
             let _ = app.emit(id, ());
         }
     });
@@ -1215,4 +1223,11 @@ fn take_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<
 #[tauri::command]
 fn has_native_menu() -> bool {
     true
+}
+
+/// Exit the app unconditionally. The Quit menu item only emits `menu-quit`;
+/// the frontend runs its unsaved-changes guard and then calls this.
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
