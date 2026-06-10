@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- userSpaceOnUse so strokes painted with this gradient match the background exactly -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b82d6"/>
+      <stop offset="1" stop-color="#1e5aa8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- macOS-style rounded square, ~22.37% corner radius -->
+  <rect x="0" y="0" width="1024" height="1024" rx="229" fill="url(#bg)"/>
+
+  <!-- Full vane outline: upper edge from base to tip, lower edge back -->
+  <path fill="#ffffff" d="M 460 530
+           C 350 430, 360 260, 530 205
+           C 630 170, 725 170, 800 195
+           C 770 300, 700 420, 590 520
+           C 530 565, 480 570, 455 545
+           Z"/>
+
+  <!-- Carve the rachis channel through the middle of the vane -->
+  <path d="M 460 530 C 570 410, 690 300, 800 195"
+        stroke="url(#bg)" stroke-width="18" fill="none" stroke-linecap="round"/>
+
+  <!-- Notch cuts in the lower edge of the vane -->
+  <g stroke="url(#bg)" stroke-width="22" stroke-linecap="round" fill="none">
+    <line x1="588" y1="562" x2="642" y2="438"/>
+    <line x1="512" y1="588" x2="548" y2="478"/>
+  </g>
+
+  <!-- Bare shaft tapering from the vane base to a nib point -->
+  <path fill="#ffffff" d="M 448 520
+           C 406 572, 342 662, 262 798
+           C 350 678, 422 592, 470 542
+           Z"/>
+</svg>
