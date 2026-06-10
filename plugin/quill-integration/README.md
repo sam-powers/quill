@@ -27,14 +27,21 @@ Examples:
 
 ## Install
 
-Add the marketplace, then install:
+Add the marketplace, then install — either from a terminal:
 
 ```bash
-claude plugin marketplace add https://github.com/sam-powers/quill
+claude plugin marketplace add sam-powers/quill
+claude plugin install quill-integration@quill-official
+```
+
+or from inside a Claude Code session:
+
+```
+/plugin marketplace add sam-powers/quill
 /plugin install quill-integration@quill-official
 ```
 
-The marketplace manifest lives at [`plugin/.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json) in the Quill repo.
+The marketplace manifest lives at [`.claude-plugin/marketplace.json`](../../.claude-plugin/marketplace.json) in the root of the Quill repo (Claude Code requires it at the repository root).
 
 ### Local development
 
