@@ -24,7 +24,7 @@ cd src-tauri && cargo test && cargo clippy -- -D warnings && cargo fmt --check
 
 CI (`.github/workflows/ci.yml`) runs the frontend checks (typecheck, eslint, prettier, vitest) and the Rust checks (fmt, clippy, test) on every push and PR to `main`. Match that bar before pushing.
 
-Releases: pushing a `v*` tag triggers `.github/workflows/release.yml` (tauri-action), which builds installers for macOS aarch64/x86_64, Windows, and Linux and attaches them to a **draft** GitHub Release. A maintainer fills in the notes (drafts live in `docs/release-notes/`) and publishes manually. Tags are pushed by the maintainer, not by automation. Keep `version` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` in sync when bumping.
+Releases: pushing a `v*` tag triggers `.github/workflows/release.yml` (tauri-action), which builds macOS installers (aarch64 + x86_64) and attaches them to a **draft** GitHub Release. Releases are macOS-only by decision: `@claude` binary/session discovery is Unix-path-based, and we don't ship builds that can't deliver the full experience. A maintainer fills in the notes (drafts live in `docs/release-notes/`) and publishes manually. Tags are pushed by the maintainer, not by automation. Keep `version` in `package.json`, `src-tauri/Cargo.toml`, and `src-tauri/tauri.conf.json` in sync when bumping.
 
 ## Contributing
 

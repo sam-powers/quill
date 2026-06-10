@@ -30,20 +30,16 @@ The sidecar is deleted automatically on save when it holds nothing, so a documen
 
 ## Install
 
-Grab the installer for your platform from the [latest GitHub Release](https://github.com/sam-powers/quill/releases/latest):
+Grab the installer for your Mac from the [latest GitHub Release](https://github.com/sam-powers/quill/releases/latest):
 
-| Platform              | File                                   |
-| --------------------- | -------------------------------------- |
-| macOS (Apple Silicon) | `…_aarch64.dmg`                        |
-| macOS (Intel)         | `…_x64.dmg`                            |
-| Windows               | `…_x64-setup.exe` or `…_x64_en-US.msi` |
-| Linux                 | `…_amd64.AppImage`, `.deb`, or `.rpm`  |
+| Platform              | File            |
+| --------------------- | --------------- |
+| macOS (Apple Silicon) | `…_aarch64.dmg` |
+| macOS (Intel)         | `…_x64.dmg`     |
+
+Releases are **macOS-only** for now — the `@claude` integration locates the Claude CLI and its sessions via Unix paths, and we'd rather not ship builds that can't deliver the full experience. Windows and Linux users can still [build from source](#building-from-source) (on Linux everything works, including `@claude`; on Windows the editor works but `@claude` is not yet supported).
 
 **macOS:** the app is not yet code-signed, so the first launch is blocked by Gatekeeper. Right-click (or Control-click) **Quill.app** and choose **Open**, then **Open** again in the dialog — only needed once. (Alternatively: `xattr -dr com.apple.quarantine /Applications/Quill.app`.)
-
-**Windows:** SmartScreen may warn about an unrecognized app — click **More info → Run anyway**.
-
-**Linux:** for the AppImage, `chmod +x` it and run; the `.deb`/`.rpm` install normally.
 
 The `@claude` features additionally require the [Claude Code](https://claude.com/claude-code) CLI installed on the same machine. New to Quill? Start with the **[User Guide](./docs/USER_GUIDE.md)** — no programming knowledge required.
 
@@ -76,7 +72,7 @@ npx playwright test   # end-to-end (requires browsers: npx playwright install)
 cd src-tauri && cargo test && cargo clippy -- -D warnings && cargo fmt --check
 ```
 
-CI runs the full frontend and Rust suites on every push and pull request to `main`. Pushing a version tag (`v*`) triggers the [release workflow](./.github/workflows/release.yml), which builds installers for macOS (Apple Silicon + Intel), Windows, and Linux and attaches them to a **draft** GitHub Release for a maintainer to review and publish.
+CI runs the full frontend and Rust suites on every push and pull request to `main`. Pushing a version tag (`v*`) triggers the [release workflow](./.github/workflows/release.yml), which builds macOS installers (Apple Silicon + Intel) and attaches them to a **draft** GitHub Release for a maintainer to review and publish.
 
 ### Project layout
 

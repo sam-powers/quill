@@ -4,12 +4,10 @@ Quill is a desktop editor for **reviewing and revising documents**, the way Goog
 
 ## Installing Quill
 
-Download the installer for your computer from the [latest release](https://github.com/sam-powers/quill/releases/latest):
+Quill is currently available for the Mac. Download the installer from the [latest release](https://github.com/sam-powers/quill/releases/latest):
 
 - **Mac with Apple Silicon** (M1 or newer, 2020+): the `.dmg` ending in `aarch64.dmg`
 - **Mac with an Intel chip**: the `.dmg` ending in `x64.dmg` (not sure which Mac you have? → Apple menu → About This Mac)
-- **Windows**: the `.exe` installer
-- **Linux**: the `.AppImage` (works everywhere), or the `.deb` / `.rpm` for your distribution
 
 ### First launch on a Mac
 
@@ -20,10 +18,6 @@ Quill isn't yet registered with Apple, so the very first time you open it macOS 
 3. In the warning dialog, click **Open** again.
 
 You only have to do this once — afterwards Quill opens normally.
-
-### First launch on Windows
-
-Windows SmartScreen may show "Windows protected your PC." Click **More info**, then **Run anyway**. This also only happens the first time.
 
 ## The basics
 

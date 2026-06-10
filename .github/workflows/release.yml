@@ -1,9 +1,13 @@
 name: Release
 
-# Builds installers for every desktop platform when a version tag is pushed
+# Builds macOS installers when a version tag is pushed
 # (e.g. `git tag v0.1.0 && git push origin v0.1.0`) and attaches them to a
 # DRAFT GitHub Release. A maintainer reviews the draft, fills in the notes
 # (see docs/release-notes/), and publishes it manually.
+#
+# Releases are macOS-only for now: the @claude integration (Claude CLI
+# discovery and session lookup) is Unix-path-based and untested elsewhere,
+# and we don't ship builds that can't deliver the full experience.
 #
 # The macOS bundles are unsigned — no Apple Developer certificate is wired in —
 # so Gatekeeper makes users right-click → Open on first launch. This is
@@ -27,10 +31,6 @@ jobs:
             args: '--target aarch64-apple-darwin'
           - platform: macos-latest # Intel
             args: '--target x86_64-apple-darwin'
-          - platform: ubuntu-22.04 # .deb, .rpm, .AppImage
-            args: ''
-          - platform: windows-latest # .msi, .exe (NSIS)
-            args: ''
 
     runs-on: ${{ matrix.platform }}
 
@@ -46,22 +46,12 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-
-      - name: Install system dependencies (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
 
       - name: Install frontend dependencies
         run: npm ci
