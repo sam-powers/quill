@@ -58,6 +58,8 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
   - Context intact → Claude is sent a **line diff** of what it originally wrote vs. the current document.
   - Context compacted → Claude is sent the **full current document** with a note explaining the compaction.
 - AI replies show a **pending** state while streaming and can be **cancelled**; failures surface an error on the reply.
+  - **Binary resolution:** the `claude` CLI is located even when the bundled app starts with a minimal PATH (the macOS GUI case) — Quill checks the current PATH, then common install locations (nvm, Homebrew, `~/.local/bin`, `~/.claude/local`), then falls back to a login shell. If it still can't be found, the reply shows an actionable error telling the user to install it / put it on PATH.
+  - **Error reporting:** `claude --print` exits 0 even on logical failures (auth errors, "no conversation found", usage limits), so success is judged by the stream's terminal `result` line (`is_error`), not the exit code. The error shown on the reply is the real reason — the result message, else stderr, else a fallback naming the exit code — rather than a generic "non-zero status".
 
 ### 3.5 Files & persistence
 

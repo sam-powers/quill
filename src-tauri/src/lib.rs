@@ -178,6 +178,76 @@ mod tests {
         assert!(!path1.exists());
         assert!(path2.exists());
     }
+
+    // --- classify_claude_outcome ---
+
+    #[test]
+    fn outcome_clean_exit_no_result_line_is_success() {
+        // Exited 0, no result line emitted (e.g. older CLI) → success.
+        assert!(classify_claude_outcome(true, Some(0), None, None, "").is_ok());
+    }
+
+    #[test]
+    fn outcome_clean_exit_success_result_is_success() {
+        assert!(classify_claude_outcome(true, Some(0), Some(false), Some("the reply"), "").is_ok());
+    }
+
+    #[test]
+    fn outcome_exit_zero_but_is_error_is_failure_with_result_message() {
+        // The core bug: claude --print exits 0 yet reports a logical error via
+        // the result line. We must treat this as a failure and surface the
+        // result message, not claim success.
+        let err = classify_claude_outcome(
+            true,
+            Some(0),
+            Some(true),
+            Some("No conversation found with session ID abc"),
+            "",
+        )
+        .unwrap_err();
+        assert_eq!(err, "No conversation found with session ID abc");
+    }
+
+    #[test]
+    fn outcome_nonzero_exit_falls_back_to_stderr() {
+        let err = classify_claude_outcome(false, Some(1), None, None, "boom: something failed\n")
+            .unwrap_err();
+        assert!(err.contains("boom: something failed"));
+    }
+
+    #[test]
+    fn outcome_result_message_preferred_over_stderr() {
+        let err = classify_claude_outcome(
+            true,
+            Some(0),
+            Some(true),
+            Some("usage limit reached"),
+            "noisy stderr",
+        )
+        .unwrap_err();
+        assert_eq!(err, "usage limit reached");
+    }
+
+    #[test]
+    fn outcome_no_message_anywhere_uses_generic_fallback_with_code() {
+        let err = classify_claude_outcome(false, Some(127), None, None, "   ").unwrap_err();
+        assert!(err.contains("127"));
+        assert!(err.contains("without producing a reply"));
+    }
+
+    // --- resolve_claude_binary ---
+
+    #[test]
+    fn resolve_claude_binary_returns_path_or_actionable_error() {
+        // Environment-dependent: on a dev machine with claude installed this
+        // resolves to an absolute path; in a bare CI image it returns an error
+        // that tells the user how to fix it. Either way it must never panic and
+        // the error must be actionable.
+        match resolve_claude_binary() {
+            Ok(path) => assert!(path.is_absolute() || path.exists()),
+            Err(msg) => assert!(msg.contains("claude")),
+        }
+    }
 }
 
 // ─── Claude Code session integration ────────────────────────────
@@ -673,6 +743,130 @@ fn read_claude_session_preview(jsonl_path: String) -> Result<SessionPreview, Str
     })
 }
 
+/// Locate the `claude` CLI. A bundled macOS app inherits a minimal PATH from
+/// launchd (often without the user's nvm / Homebrew dirs), so a bare
+/// `Command::new("claude")` fails with "No such file or directory" even though
+/// the binary is installed. We try, in order: (1) the existing PATH (works in
+/// `tauri dev` / from a terminal), (2) a list of common install locations, and
+/// (3) a login shell, which sources the user's profile and knows the real PATH.
+/// Returns an absolute path to the binary, or an error explaining the search.
+fn resolve_claude_binary() -> Result<PathBuf, String> {
+    // 1. Already on PATH?
+    if let Ok(output) = Command::new("which").arg("claude").output() {
+        if output.status.success() {
+            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Ok(PathBuf::from(path));
+            }
+        }
+    }
+
+    // 2. Common install locations (nvm picks the highest-versioned node dir).
+    let home = std::env::var("HOME").unwrap_or_default();
+    let mut candidates: Vec<PathBuf> = vec![
+        PathBuf::from(format!("{home}/.claude/local/claude")),
+        PathBuf::from(format!("{home}/.local/bin/claude")),
+        PathBuf::from("/opt/homebrew/bin/claude"),
+        PathBuf::from("/usr/local/bin/claude"),
+    ];
+    let nvm_bin = PathBuf::from(format!("{home}/.nvm/versions/node"));
+    if let Ok(entries) = std::fs::read_dir(&nvm_bin) {
+        let mut versions: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path().join("bin/claude"))
+            .collect();
+        versions.sort();
+        versions.reverse(); // newest version first
+        candidates.extend(versions);
+    }
+    for candidate in &candidates {
+        if candidate.is_file() {
+            return Ok(candidate.clone());
+        }
+    }
+
+    // 3. Ask a login shell (sources the user's profile → full PATH).
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    if let Ok(output) = Command::new(&shell)
+        .arg("-lic")
+        .arg("command -v claude")
+        .output()
+    {
+        if output.status.success() {
+            // A login shell may print profile banners; take the last non-empty
+            // line, which is `command -v`'s output.
+            if let Some(path) = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .rev()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+            {
+                if !path.is_empty() {
+                    return Ok(PathBuf::from(path));
+                }
+            }
+        }
+    }
+
+    Err(
+        "Could not find the `claude` CLI. Install it (https://docs.claude.com/claude-code) \
+         and make sure it's on your PATH, then restart Quill."
+            .to_string(),
+    )
+}
+
+/// Decide whether a finished `claude` invocation succeeded, and if not, produce
+/// the most useful error message. Pure so it can be unit-tested.
+///
+/// Success requires BOTH a clean process exit and a non-error result line.
+/// `claude --print` exits 0 even on logical failures (auth errors, "no
+/// conversation found", usage limits), signalling them only via the result
+/// line's `is_error`, so that field is authoritative when present. The error
+/// message prefers the result line's text (the actual reason), then stderr,
+/// then a generic fallback that at least names the exit code.
+fn classify_claude_outcome(
+    exit_ok: bool,
+    exit_code: Option<i32>,
+    result_is_error: Option<bool>,
+    result_message: Option<&str>,
+    stderr_buf: &str,
+) -> Result<(), String> {
+    let logical_ok = result_is_error != Some(true);
+    if exit_ok && logical_ok {
+        return Ok(());
+    }
+
+    let stderr_tail = {
+        let msg = stderr_buf.trim();
+        if msg.is_empty() {
+            None
+        } else {
+            Some(
+                msg.lines()
+                    .rev()
+                    .take(5)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        }
+    };
+
+    let message = result_message
+        .map(str::to_string)
+        .filter(|m| !m.trim().is_empty())
+        .or(stderr_tail)
+        .unwrap_or_else(|| {
+            let code = exit_code
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            format!("claude exited without producing a reply (exit code {code})")
+        });
+    Err(message)
+}
+
 #[tauri::command]
 fn spawn_claude_resume(
     app: tauri::AppHandle,
@@ -681,7 +875,8 @@ fn spawn_claude_resume(
     prompt: String,
     on_event: Channel<ChunkEvent>,
 ) -> Result<String, String> {
-    let mut cmd = Command::new("claude");
+    let claude_bin = resolve_claude_binary()?;
+    let mut cmd = Command::new(&claude_bin);
     cmd.arg("--resume")
         .arg(&session_id)
         .arg("--print")
@@ -726,6 +921,12 @@ fn spawn_claude_resume(
 
     std::thread::spawn(move || {
         let mut any_delta = false;
+        // The final `result` line reports logical success/failure. `claude
+        // --print` exits 0 even on errors (auth failures, "no conversation
+        // found", usage limits), signalling them only via `is_error` here — so
+        // we must inspect this, not just the process exit code.
+        let mut result_is_error: Option<bool> = None;
+        let mut result_message: Option<String> = None;
         let stdout_reader = BufReader::new(stdout);
         for line in stdout_reader.lines().map_while(Result::ok) {
             if line.trim().is_empty() {
@@ -735,6 +936,18 @@ fn spawn_claude_resume(
                 Ok(v) => v,
                 Err(_) => continue,
             };
+            // Terminal result line: { type: "result", is_error: bool,
+            //                         subtype: "...", result: "..." }
+            if parsed.get("type").and_then(|t| t.as_str()) == Some("result") {
+                result_is_error = parsed.get("is_error").and_then(|v| v.as_bool());
+                // Prefer the human-readable `result`, fall back to `subtype`.
+                result_message = parsed
+                    .get("result")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| parsed.get("subtype").and_then(|v| v.as_str()))
+                    .map(|s| s.to_string());
+                continue;
+            }
             // Partial messages: { type: "stream_event", event: { type: "content_block_delta",
             //                     delta: { type: "text_delta", text: "..." } } }
             if parsed.get("type").and_then(|t| t.as_str()) == Some("stream_event") {
@@ -774,25 +987,26 @@ fn spawn_claude_resume(
         };
 
         let cancelled = handle.cancelled.load(Ordering::SeqCst);
+        let exit_code = status.and_then(|s| s.code());
+        let exit_ok = status.map(|s| s.success()).unwrap_or(false);
+
         if cancelled {
             let _ = on_event.send(ChunkEvent::Cancelled);
-        } else if status.map(|s| s.success()).unwrap_or(false) {
-            let _ = on_event.send(ChunkEvent::Done);
         } else {
-            let msg = stderr_buf.trim();
-            let message = if msg.is_empty() {
-                "claude exited with a non-zero status".to_string()
-            } else {
-                msg.lines()
-                    .rev()
-                    .take(5)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
-            let _ = on_event.send(ChunkEvent::Error { message });
+            match classify_claude_outcome(
+                exit_ok,
+                exit_code,
+                result_is_error,
+                result_message.as_deref(),
+                &stderr_buf,
+            ) {
+                Ok(()) => {
+                    let _ = on_event.send(ChunkEvent::Done);
+                }
+                Err(message) => {
+                    let _ = on_event.send(ChunkEvent::Error { message });
+                }
+            }
         }
 
         // Remove from registry on natural completion.
