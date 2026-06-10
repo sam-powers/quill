@@ -1,6 +1,6 @@
 # Quill
 
-A **collaborative writing environment for you and Claude** — take the plans, reports, and docs your agent drafts out of the CLI and work on them together in a real editor, with Google-Docs-style **tracked changes**, **inline comments**, and **@claude replies from the session that wrote the document**.
+**The document editor that can hold a conversation.** Quill is a Markdown editor where Claude works in Google-Docs-style suggesting mode: ask a question in an **inline comment** and **the session that wrote the doc answers in the thread**; ask for a rewrite and it lands as **tracked changes** you accept or reject.
 
 ![Claude Code researches Quill, writes a report on using it at work, opens it in Quill, and its rewrite arrives as tracked changes you accept or reject](./docs/assets/hero.gif)
 

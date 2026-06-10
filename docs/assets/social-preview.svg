@@ -30,8 +30,8 @@
 
   <g fill="#ffffff" font-family="-apple-system, 'Helvetica Neue', Helvetica, Arial, sans-serif">
     <text x="560" y="280" font-size="120" font-weight="700">Quill</text>
-    <text x="563" y="350" font-size="38" opacity="0.92">A collaborative writing space for</text>
-    <text x="563" y="404" font-size="38" opacity="0.92">you and Claude — beyond the CLI.</text>
+    <text x="563" y="350" font-size="38" opacity="0.92">The document editor that</text>
+    <text x="563" y="404" font-size="38" opacity="0.92">can hold a conversation.</text>
     <text x="563" y="488" font-size="28" opacity="0.7">macOS · open source · built on Claude Code</text>
   </g>
 </svg>
