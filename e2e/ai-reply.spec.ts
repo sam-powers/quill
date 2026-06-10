@@ -153,6 +153,11 @@ test('AI reply: @claude in the initial comment triggers a reply', async ({ page 
     timeout: 3000,
   });
   await expect(aiReply.locator('.ai-spinner')).toHaveCount(0);
+
+  // Thread order: the user's question must render above Claude's answer.
+  const replies = page.locator('.comment-reply');
+  await expect(replies.first()).toContainText('@claude please review this');
+  await expect(replies.first()).not.toHaveClass(/comment-reply-ai/);
 });
 
 test('AI reply: @claude with no linked session opens the session picker', async ({ page }) => {
