@@ -39,7 +39,7 @@ console.log('terminal frames done');
 async function cosmetics(page) {
   await page.evaluate(() => {
     const f = document.querySelector('.footer-filename');
-    if (f) f.childNodes[0].textContent = 'eu-market-entry.md';
+    if (f) f.childNodes[0].textContent = 'using-quill-at-work.md';
     document.querySelectorAll('.comment-author').forEach((el) => {
       if (el.textContent === 'Anonymous') el.textContent = 'Sam';
     });
@@ -55,7 +55,7 @@ await page.addInitScript(() => {
   window.__quillTestSession = {
     provider: 'claude-code',
     sessionId: 'a3f8c21b-7d4e-4b2a-9c61-0f5e8d2b4a90',
-    cwd: '/Users/sam/work/eu-expansion',
+    cwd: '/Users/sam/work',
     generatedAt: '2026-06-09T10:00:00Z',
   };
   // Mock spawn_claude_resume; the script below pushes ChunkEvents by hand so
@@ -77,22 +77,18 @@ await page.waitForTimeout(200);
 
 // Type the document Claude "wrote" in the terminal scene (markdown input
 // rules turn "# " into an H1).
-await page.keyboard.type('# EU Market Entry — Recommendation', { delay: 1 });
-await page.keyboard.press('Enter');
-await page.keyboard.type(
-  'Recommendation: launch in Germany first, with the Netherlands as a fast follow. Both score highest on payment readiness and time-to-localize.',
-  { delay: 1 },
-);
-await page.keyboard.press('Enter');
-await page.keyboard.type(
-  'It was determined by our analysis that an initial launch in Germany would be the option that is most advantageous, due to the fact that it has the largest market in the region and localization requirements are able to be satisfied by our existing tooling.',
-  { delay: 1 },
-);
-await page.keyboard.press('Enter');
-await page.keyboard.type(
-  'Pricing should mirror the US tiers at launch; revisit after the first quarter of revenue data.',
-  { delay: 1 },
-);
+const PARAGRAPHS = [
+  '# Using Quill in My Work',
+  'Quill is a desktop Markdown editor built around the review pass: tracked changes, inline comments, and an AI reviewer wired to the very Claude Code session that wrote the document. This doc covers where it fits in my week.',
+  'The clearest fit is planning docs and client reports. I already draft those with Claude in the terminal; the missing piece was the editing pass. With Quill I send the draft straight from the session into a real editor, and every rewrite — mine or the AI’s — shows up as a suggestion to accept or reject, so nothing changes silently.',
+  'It should also be noted that the review process is made considerably more efficient by the fact that comments are able to be anchored to specific passages, and that a question that is asked with @claude is answered by the same agent that was responsible for the writing of the draft.',
+  'Everything stays a plain .md file on disk, with comments and suggestions in a sidecar. Drafts remain portable to git, wikis, and anything else that reads Markdown, and a doc with no review metadata is just a clean Markdown file.',
+  'To set it up: install the quill-integration plugin, then run /quill-integration:open-in-quill from any session to send its draft into the editor, already linked for @claude review.',
+];
+for (const [i, text] of PARAGRAPHS.entries()) {
+  if (i > 0) await page.keyboard.press('Enter');
+  await page.keyboard.type(text, { delay: 1 });
+}
 await page.waitForTimeout(300);
 
 await cosmetics(page);
@@ -100,7 +96,7 @@ await page.screenshot({ path: `${OUT}/a1.png` });
 console.log('a1 done');
 
 // Select the wordy paragraph (triple-click) and post an @claude comment.
-const para = page.locator('.ProseMirror p', { hasText: 'determined by our analysis' });
+const para = page.locator('.ProseMirror p', { hasText: 'It should also be noted' });
 await para.click({ clickCount: 3 });
 await page.waitForTimeout(200);
 await page.locator('.add-comment-btn').click();
@@ -135,12 +131,13 @@ await page.evaluate(() =>
         summary: 'Tightened the paragraph and made it active voice.',
         edits: [
           {
-            find: 'It was determined by our analysis that an initial launch in Germany would be the option that is most advantageous, due to the fact that',
-            replace: 'Our analysis points to Germany for the initial launch:',
+            find: 'It should also be noted that the review process is made considerably more efficient by the fact that comments are able to be anchored to specific passages',
+            replace:
+              'Anchoring comments to specific passages makes the review pass far more efficient',
           },
           {
-            find: 'localization requirements are able to be satisfied by our existing tooling',
-            replace: 'our existing tooling already covers localization',
+            find: 'that a question that is asked with @claude is answered by the same agent that was responsible for the writing of the draft',
+            replace: '@claude questions go straight to the agent that wrote the draft',
           },
         ],
       }) + '\n```',
