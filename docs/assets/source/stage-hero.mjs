@@ -95,7 +95,44 @@ await cosmetics(page);
 await page.screenshot({ path: `${OUT}/a1.png` });
 console.log('a1 done');
 
-// Select the wordy paragraph (triple-click) and post an @claude comment.
+// ----- Scene 1: ask @claude a question in a comment (research, no rewrite) -----
+const sidecarPara = page.locator('.ProseMirror p', { hasText: 'Everything stays a plain' });
+await sidecarPara.click({ clickCount: 3 });
+await page.waitForTimeout(200);
+await page.locator('.add-comment-btn').click();
+await page
+  .locator('.add-comment-compose textarea')
+  .fill('@claude if I send this to a teammate without Quill, what do they see?');
+await page.locator('.add-comment-compose .btn-primary').click();
+await page.waitForTimeout(400);
+
+// Frame: the answer starts streaming into the thread.
+await page.evaluate(() =>
+  window.__aiPush({ kind: 'delta', text: 'Just clean Markdown — the review layer ' }),
+);
+await page.waitForTimeout(300);
+await cosmetics(page);
+await page.screenshot({ path: `${OUT}/a2.png` });
+console.log('a2 done');
+
+// Frame: the researched answer, complete.
+await page.evaluate(() =>
+  window.__aiPush({
+    kind: 'delta',
+    text: 'never touches the .md. Comments and suggestions live beside it in using-quill-at-work.comments.json, and Quill restores the full thread on open.',
+  }),
+);
+await page.evaluate(() => window.__aiPush({ kind: 'done' }));
+await page.waitForTimeout(500);
+await cosmetics(page);
+await page.screenshot({ path: `${OUT}/a3.png` });
+console.log('a3 done');
+
+// Resolve the answered thread so the rail is clear for the rewrite scene.
+await page.locator('.comment-resolve-btn').click();
+await page.waitForTimeout(300);
+
+// ----- Scene 2: ask @claude to rewrite the wordy paragraph -----
 const para = page.locator('.ProseMirror p', { hasText: 'It should also be noted' });
 await para.click({ clickCount: 3 });
 await page.waitForTimeout(200);
@@ -110,8 +147,8 @@ await page.waitForTimeout(400);
 await page.evaluate(() => window.__aiPush({ kind: 'delta', text: 'Tightened — active ' }));
 await page.waitForTimeout(300);
 await cosmetics(page);
-await page.screenshot({ path: `${OUT}/a2.png` });
-console.log('a2 done');
+await page.screenshot({ path: `${OUT}/a4.png` });
+console.log('a4 done');
 
 // Frame: prose complete; the quill-edits fence is held back from display.
 await page.evaluate(() =>
@@ -119,8 +156,8 @@ await page.evaluate(() =>
 );
 await page.waitForTimeout(300);
 await cosmetics(page);
-await page.screenshot({ path: `${OUT}/a3.png` });
-console.log('a3 done');
+await page.screenshot({ path: `${OUT}/a5.png` });
+console.log('a5 done');
 
 // Finish the stream: edits become Claude-attributed tracked changes.
 await page.evaluate(() =>
@@ -149,8 +186,8 @@ await page.waitForTimeout(800);
 await cosmetics(page);
 // Frame: final state — reply complete, tracked changes + suggestion cards.
 // This frame, at full 2x resolution, is also docs/assets/hero.png.
-await page.screenshot({ path: `${OUT}/a4.png` });
-console.log('a4 done');
+await page.screenshot({ path: `${OUT}/a6.png` });
+console.log('a6 done');
 
 await browser.close();
 console.log('all frames captured');

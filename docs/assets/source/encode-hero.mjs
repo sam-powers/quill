@@ -16,9 +16,11 @@ const FRAMES = [
   { file: 't1.png', delay: 2000 },
   { file: 't2.png', delay: 1800 },
   { file: 'a1.png', delay: 1800 },
-  { file: 'a2.png', delay: 1600 },
-  { file: 'a3.png', delay: 1300 },
-  { file: 'a4.png', delay: 5000 },
+  { file: 'a2.png', delay: 1500 },
+  { file: 'a3.png', delay: 3600 },
+  { file: 'a4.png', delay: 1500 },
+  { file: 'a5.png', delay: 1300 },
+  { file: 'a6.png', delay: 5000 },
 ];
 
 // 2x box downscale: frames are captured at deviceScaleFactor 2 (2200x1480),
@@ -56,5 +58,5 @@ gif.finish();
 
 const out = path.join(HERE, '..', 'hero.gif');
 fs.writeFileSync(out, gif.bytes());
-fs.copyFileSync(path.join(HERE, 'frames', 'a4.png'), path.join(HERE, '..', 'hero.png'));
+fs.copyFileSync(path.join(HERE, 'frames', 'a6.png'), path.join(HERE, '..', 'hero.png'));
 console.log('hero.gif:', (fs.statSync(out).size / 1024).toFixed(0), 'KB; hero.png updated');
