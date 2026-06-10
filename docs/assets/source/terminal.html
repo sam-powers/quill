@@ -1,74 +1,142 @@
 <!doctype html>
 <html>
-<head>
-<meta charset="utf-8">
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 1100px; height: 740px; overflow: hidden; }
-  body {
-    background: #2d6dc0;
-    display: flex; align-items: center; justify-content: center;
-    font-family: "SF Mono", Menlo, Monaco, monospace;
-  }
-  .window {
-    width: 920px;
-    background: #1e2228;
-    border-radius: 12px;
-    box-shadow: 0 24px 70px rgba(0,0,0,0.45);
-    overflow: hidden;
-  }
-  .titlebar {
-    height: 38px; background: #2a2f37;
-    display: flex; align-items: center; padding: 0 14px;
-    position: relative;
-  }
-  .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
-  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
-  .title {
-    position: absolute; left: 0; right: 0; text-align: center;
-    color: #9aa3ad; font-size: 13px;
-    font-family: -apple-system, "Helvetica Neue", sans-serif;
-  }
-  .body { padding: 24px 28px 32px; font-size: 17px; line-height: 1.7; color: #d6dce3; }
-  .dim { color: #7d8794; }
-  .prompt { color: #61afef; }
-  .cmd { color: #e6edf3; }
-  .slash { color: #c678dd; }
-  .claude-box {
-    border: 1px solid #4a5260; border-radius: 8px;
-    padding: 10px 16px; margin: 14px 0; color: #aab4c0;
-  }
-  .claude-box .spark { color: #d97757; }
-  .out { margin-top: 14px; }
-  .out .bullet { color: #98c379; }
-  .caret {
-    display: inline-block; width: 9px; height: 19px;
-    background: #d6dce3; vertical-align: text-bottom; margin-left: 2px;
-  }
-</style>
-</head>
-<body>
-  <div class="window">
-    <div class="titlebar">
-      <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
-      <span class="title">claude — ~/projects/launch</span>
-    </div>
-    <div class="body">
-      <div><span class="dim">~/projects/launch</span></div>
-      <div><span class="prompt">❯</span> <span class="cmd">claude</span></div>
-      <div class="claude-box"><span class="spark">✻</span> Claude Code <span class="dim">— resuming session in ~/projects/launch</span></div>
-      <div><span class="prompt">&gt;</span> <span class="slash">/quill-integration:open-in-quill</span> <span class="cmd">launch-post.md</span><span class="caret" id="caret"></span></div>
-      <div class="out" id="out" style="display:none">
-        <div><span class="bullet">⏺</span> Opening <span class="cmd">launch-post.md</span> in Quill…</div>
-        <div class="dim" style="margin-left: 18px;">comments, tracked changes, and this session's link restored from the sidecar</div>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1100px;
+        height: 740px;
+        overflow: hidden;
+      }
+      body {
+        background: #2d6dc0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'SF Mono', Menlo, Monaco, monospace;
+      }
+      .window {
+        width: 920px;
+        background: #1e2228;
+        border-radius: 12px;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+      .titlebar {
+        height: 38px;
+        background: #2a2f37;
+        display: flex;
+        align-items: center;
+        padding: 0 14px;
+        position: relative;
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .dot.r {
+        background: #ff5f57;
+      }
+      .dot.y {
+        background: #febc2e;
+      }
+      .dot.g {
+        background: #28c840;
+      }
+      .title {
+        position: absolute;
+        left: 0;
+        right: 0;
+        text-align: center;
+        color: #9aa3ad;
+        font-size: 13px;
+        font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      }
+      .body {
+        padding: 24px 28px 32px;
+        font-size: 17px;
+        line-height: 1.7;
+        color: #d6dce3;
+      }
+      .dim {
+        color: #7d8794;
+      }
+      .prompt {
+        color: #61afef;
+      }
+      .cmd {
+        color: #e6edf3;
+      }
+      .slash {
+        color: #c678dd;
+      }
+      .claude-box {
+        border: 1px solid #4a5260;
+        border-radius: 8px;
+        padding: 10px 16px;
+        margin: 14px 0;
+        color: #aab4c0;
+      }
+      .claude-box .spark {
+        color: #d97757;
+      }
+      .out {
+        margin-top: 14px;
+      }
+      .out .bullet {
+        color: #98c379;
+      }
+      .caret {
+        display: inline-block;
+        width: 9px;
+        height: 19px;
+        background: #d6dce3;
+        vertical-align: text-bottom;
+        margin-left: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="window">
+      <div class="titlebar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="title">claude — ~/projects/launch</span>
+      </div>
+      <div class="body">
+        <div><span class="dim">~/projects/launch</span></div>
+        <div><span class="prompt">❯</span> <span class="cmd">claude</span></div>
+        <div class="claude-box">
+          <span class="spark">✻</span> Claude Code
+          <span class="dim">— resuming session in ~/projects/launch</span>
+        </div>
+        <div>
+          <span class="prompt">&gt;</span>
+          <span class="slash">/quill-integration:open-in-quill</span>
+          <span class="cmd">launch-post.md</span><span class="caret" id="caret"></span>
+        </div>
+        <div class="out" id="out" style="display: none">
+          <div>
+            <span class="bullet">⏺</span> Opening <span class="cmd">launch-post.md</span> in Quill…
+          </div>
+          <div class="dim" style="margin-left: 18px">
+            comments, tracked changes, and this session's link restored from the sidecar
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-  <script>
-    if (new URLSearchParams(location.search).get('step') === '2') {
-      document.getElementById('out').style.display = 'block';
-      document.getElementById('caret').style.display = 'none';
-    }
-  </script>
-</body>
+    <script>
+      if (new URLSearchParams(location.search).get('step') === '2') {
+        document.getElementById('out').style.display = 'block';
+        document.getElementById('caret').style.display = 'none';
+      }
+    </script>
+  </body>
 </html>

@@ -23,6 +23,8 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'src-tauri/', 'node_modules/'],
+    // docs/assets/source holds one-off asset-generation scripts (browser +
+    // node globals mixed), same category as src-tauri/icons/source.
+    ignores: ['dist/', 'src-tauri/', 'node_modules/', 'docs/assets/source/'],
   },
 );
