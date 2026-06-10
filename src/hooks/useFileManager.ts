@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { SidecarFile, Comment, Suggestion, AISessionBinding } from '../types';
 import { sidecarPath } from '../utils/sidecarPath';
+import { basename } from '../utils/path';
 
 function emptySidecar(): SidecarFile {
   return { version: 2, comments: [], suggestions: [] };
@@ -205,10 +206,8 @@ export function useFileManager(
       aiSession: AISessionBinding | null,
     ): Promise<string | null> => {
       try {
-        const defaultName = filePath ? filePath.split('/').pop() : 'untitled.md';
-        const path = await invoke<string | null>('show_save_dialog', {
-          defaultName: defaultName ?? 'untitled.md',
-        });
+        const defaultName = filePath ? basename(filePath) : 'untitled.md';
+        const path = await invoke<string | null>('show_save_dialog', { defaultName });
         if (!path) return null;
         const resolvedPath = path.endsWith('.md') ? path : `${path}.md`;
         return saveFile(content, comments, suggestions, aiSession, resolvedPath);

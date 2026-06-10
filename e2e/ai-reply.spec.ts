@@ -166,6 +166,19 @@ test('AI reply: @claude with no linked session opens the session picker', async 
   await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
 });
 
+test('AI reply: @claude in a reply with no linked session opens the session picker', async ({
+  page,
+}) => {
+  await setupWithoutSession(page);
+  await expect(page.locator('.session-picker')).toHaveCount(0);
+
+  // Same as the initial-comment case, but via the reply form on an existing
+  // comment — this path used to silently drop the @claude request.
+  await addCommentWithAIReply(page, 'hello world', '@claude take a look');
+
+  await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
+});
+
 test('AI reply: pending → error shows Re-link button', async ({ page }) => {
   await setupWithMock(page, [
     { kind: 'delta', text: 'partial...' },
