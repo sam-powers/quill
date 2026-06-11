@@ -10,6 +10,29 @@ Files are plain `.md` on disk; review metadata rides alongside in a sidecar, so 
 
 > **The defining feature:** a document can be linked to the Claude Code session that authored it. A reviewer can reply to a comment with `@claude` and get an inline, context-aware answer from the same agent — even after that session has been compacted. And for a document no session wrote — one someone sent you — **Start new session** spins up a fresh Claude session just for it.
 
+## Getting started
+
+Quill is a free Mac app — no account, nothing to configure. From zero to writing:
+
+1. **Download** the installer from the [latest release](https://github.com/sam-powers/quill/releases/latest). Under **Assets**, pick the `.dmg` for your Mac:
+
+   | Your Mac                                           | File            |
+   | -------------------------------------------------- | --------------- |
+   | Apple Silicon (M1 or newer — most Macs since 2020) | `…_aarch64.dmg` |
+   | Intel (Apple menu → About This Mac if unsure)      | `…_x64.dmg`     |
+
+2. **Install** — open the downloaded `.dmg` and drag **Quill** into your **Applications** folder.
+
+3. **Open it** — Quill isn't code-signed yet, so the first launch takes one extra step: right-click (or Control-click) **Quill** in Applications, choose **Open**, then click **Open** in the warning dialog. Only needed once — afterwards it opens like any other app. (Alternatively: `xattr -dr com.apple.quarantine /Applications/Quill.app`.)
+
+4. **Write** — open any Markdown file with **File → Open…** or just start typing. Editing, suggesting mode, and comments all work out of the box; the `@claude` features need one companion tool — see [Setting up `@claude`](#setting-up-claude).
+
+New to Quill? The **[User Guide](./docs/USER_GUIDE.md)** walks through everything — no programming knowledge required.
+
+**Staying up to date:** Quill checks once per launch and shows a banner in the app when a newer version has been published — installing it is always your call. You can also **Watch → Custom → Releases** on this repo to get an email per release (the only option if you're on v0.1 or v0.2, which predate the banner).
+
+Releases are **macOS-only** for now — the `@claude` integration locates the Claude CLI and its sessions via Unix paths, and we'd rather not ship builds that can't deliver the full experience. Windows and Linux users can still [build from source](#building-from-source) (on Linux everything works, including `@claude`; on Windows the editor works but `@claude` is not yet supported).
+
 ## Features
 
 - **WYSIWYG Markdown editing** built on Tiptap/ProseMirror, with a formatting toolbar (bold, italic, underline, strikethrough, headings, lists, blockquote, inline code) and undo/redo.
@@ -32,22 +55,7 @@ Every saved document is two files:
 
 The sidecar is deleted automatically on save when it holds nothing, so a document with no review metadata is just a clean `.md` file.
 
-## Install
-
-Grab the installer for your Mac from the [latest GitHub Release](https://github.com/sam-powers/quill/releases/latest):
-
-| Platform              | File            |
-| --------------------- | --------------- |
-| macOS (Apple Silicon) | `…_aarch64.dmg` |
-| macOS (Intel)         | `…_x64.dmg`     |
-
-Releases are **macOS-only** for now — the `@claude` integration locates the Claude CLI and its sessions via Unix paths, and we'd rather not ship builds that can't deliver the full experience. Windows and Linux users can still [build from source](#building-from-source) (on Linux everything works, including `@claude`; on Windows the editor works but `@claude` is not yet supported).
-
-**macOS:** the app is not yet code-signed, so the first launch is blocked by Gatekeeper. Right-click (or Control-click) **Quill.app** and choose **Open**, then **Open** again in the dialog — only needed once. (Alternatively: `xattr -dr com.apple.quarantine /Applications/Quill.app`.)
-
-New to Quill? Start with the **[User Guide](./docs/USER_GUIDE.md)** — no programming knowledge required.
-
-### Setting up `@claude`
+## Setting up `@claude`
 
 Editing, tracked changes, and comments work standalone. The `@claude` features — AI replies and AI-authored tracked changes — need the [Claude Code](https://claude.com/claude-code) CLI on the same machine:
 

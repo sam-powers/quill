@@ -19,6 +19,10 @@ Quill isn't yet registered with Apple, so the very first time you open it macOS 
 
 You only have to do this once — afterwards Quill opens normally.
 
+### Staying up to date
+
+Each time Quill starts it checks whether a newer version has been released. If there is one, a slim banner appears at the top of the window: **View release** opens the download page in your browser, and **×** dismisses the notice for that version. Quill never updates itself or downloads anything in the background — installing a new version is always your choice. To update, download the new `.dmg` and replace the app in Applications; your documents are untouched.
+
 ## The basics
 
 - **Open** a Markdown (`.md`) file with **File → Open…** (or Cmd/Ctrl+O), **save** with Cmd/Ctrl+S.
