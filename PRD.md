@@ -112,4 +112,4 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 
 ## 7. Backlog / known gaps
 
-- **Voice interaction** — talk to the document instead of (or alongside) typing: e.g. dictating comments, speaking a `@claude` request, or a hands-free review pass. Scope, interaction model, and speech stack (OS-native dictation vs. a speech-to-text API) all unexplored; parked here until prioritized.
+- **Voice interaction** — talk to the document instead of (or alongside) typing: e.g. dictating comments, speaking a `@claude` request, or a hands-free review pass. Spoken references need a way to point at text without a cursor, so this includes a **line-number display** in the editor (e.g. a toggleable gutter) that users can read aloud ("change line 12…") and that voice commands resolve against. Scope, interaction model, and speech stack (OS-native dictation vs. a speech-to-text API) all unexplored; parked here until prioritized.
