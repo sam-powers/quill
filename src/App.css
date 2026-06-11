@@ -1041,6 +1041,9 @@ del.track-delete {
 .suggestion-card-delete .comment-thread-line {
   background: var(--color-track-del-line);
 }
+.suggestion-card-replace .comment-thread-line {
+  background: linear-gradient(var(--color-track-del-line), var(--color-track-add-line));
+}
 
 .suggestion-type-badge {
   font-size: 11px;
@@ -1056,6 +1059,21 @@ del.track-delete {
 .suggestion-type-badge.delete {
   background: var(--color-track-del-bg);
   color: var(--color-track-del-text);
+}
+.suggestion-type-badge.replace {
+  background: var(--color-highlight-bg);
+  color: var(--color-ink);
+}
+
+.suggestion-replace-old {
+  text-decoration: line-through;
+  color: var(--color-track-del-text);
+}
+.suggestion-replace-arrow {
+  color: var(--color-ink-light);
+}
+.suggestion-replace-new {
+  color: var(--color-track-add-text);
 }
 
 .suggestion-actions {

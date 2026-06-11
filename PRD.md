@@ -36,7 +36,7 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
   - Suggested text and its card are **click-linked both ways** (Google-Docs style): clicking the tracked text in the document activates its card, and clicking a card intensifies the highlight on its text. See §3.3a.
   - When any pending changes exist, the toolbar shows **Accept All** / **Reject All**.
   - Accepting an insertion keeps the text and drops the mark; rejecting removes it. Accepting a deletion removes the text; rejecting restores it.
-  - Replacing text (typing over a selection) is represented as a **paired deletion + insertion** — two independent tracked changes, each accepted or rejected on its own — not a single "replacement" change.
+  - Replacing text (typing over a selection, or an applied Claude edit) is a **paired deletion + insertion** sharing a pair id, surfaced as a **single "Replacement" card** showing old → new. Accept keeps the new text and removes the old; Reject restores the old and discards the new — both halves resolved together, in one undo step. Continuing to type extends the same replacement. Clicking either the struck-out or the inserted text focuses the whole pair (see §3.3a).
 - Switching back to Editing stops tracking new changes (existing tracked changes remain until resolved).
 
 ### 3.3 Comments
@@ -52,7 +52,7 @@ Comments and suggestions share one **focus** model, mirroring Google Docs:
 
 - **Clicking annotated text in the document** activates the matching margin card (outlined): commented text pulls up its comment card; tracked-change text pulls up its Accept/Reject card.
 - **Clicking a card** does the reverse: the card activates, the document scrolls its text into view, and the text gets an **intensified highlight** (an editor decoration layered over the comment/track-change coloring — never written into the document).
-- Exactly **one annotation is focused at a time**. When annotations overlap (e.g. a comment inside a tracked insertion), a click focuses the **innermost** one — the smallest text range.
+- Exactly **one annotation is focused at a time**. When annotations overlap (e.g. a comment inside a tracked insertion), a click focuses the **innermost** one — the smallest text range. A replacement's two halves focus as **one unit**: clicking either half activates the single Replacement card and highlights both the old and the new text.
 - The focus is dismissed by **Escape**, by **clicking plain text**, by clicking the active card again (toggle), or automatically when the focused annotation goes away (comment resolved or deleted, suggestion accepted or rejected).
 - Adding a new comment focuses it immediately.
 
@@ -93,7 +93,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 
 - `Comment` (anchored text range + threaded `Reply[]`, resolved flag).
 - `Reply` (author, text, `authorKind: user | ai`, pending/error state for streaming AI replies).
-- `Suggestion` (status pending / accepted / rejected). The `type` field allows `insertion | deletion | replacement`, but `replacement` is currently unused — the editor tracks changes as `tracked_insert` / `tracked_delete` marks and never emits a distinct replacement.
+- `Suggestion` (status pending / accepted / rejected). The `type` field allows `insertion | deletion | replacement`, but `replacement` is currently unused in the sidecar — the editor tracks changes as `tracked_insert` / `tracked_delete` marks. A replacement lives as a delete mark and an insert mark sharing a `pairId` (surfaced on `TrackedChangeInfo`), not as a third mark type.
 - `AISessionBinding` (`provider: claude-code`, session id, cwd, linkedAt, optional `createdByQuill` marking bindings minted by "Start new session" rather than linked to an existing authoring session).
 - `SidecarFile` (version 2: comments + suggestions + optional aiSession + optional contextFolder). The optional fields are backward compatible — older sidecars load unchanged.
 
@@ -107,7 +107,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 - No multi-user / real-time collaboration.
 - No accounts, sign-in, or cloud sync.
 - No document sharing beyond the local `.md` + sidecar pair.
-- Suggesting mode tracks insertions and deletions only. A replacement is just a delete + insert pair; the `'replacement'` value in `SuggestionType` is declared but never written or read (a vestigial enum value, candidate for cleanup).
+- Suggesting mode stores only insert and delete marks; a replacement is a delete + insert pair linked by a shared `pairId` (one card, atomic resolution) rather than a third mark type. The `'replacement'` value in the sidecar's `SuggestionType` is still never written or read (a vestigial enum value, candidate for cleanup).
 
 ## 7. Backlog / known gaps
 

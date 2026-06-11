@@ -1,5 +1,6 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { closeHistory } from '@tiptap/pm/history';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   TrackChanges,
@@ -201,6 +202,88 @@ describe('TrackChanges extension', () => {
       editor.commands.rejectAllChanges();
       expect(hasMarkOfType(editor, 'tracked_insert')).toBe(false);
       expect(hasMarkOfType(editor, 'tracked_delete')).toBe(false);
+    });
+  });
+
+  describe('replacement pairing', () => {
+    beforeEach(() => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.commands.setTrackChangesEnabled(true);
+      editor.commands.setTrackChangesAuthor('alice');
+    });
+
+    function replaceHelloWithHi() {
+      // One ReplaceStep that both deletes and inserts — typing over a selection.
+      editor.chain().setTextSelection({ from: 1, to: 6 }).insertContent('Hi').run();
+    }
+
+    it('replacing text gives both halves a shared pairId', () => {
+      replaceHelloWithHi();
+      const changes = getTrackedChanges(editor);
+      const del = changes.find((c) => c.operation === 'delete');
+      const ins = changes.find((c) => c.operation === 'insert');
+      expect(del?.pairId).toBeTruthy();
+      expect(del?.pairId).toBe(ins?.pairId);
+    });
+
+    it('a pure insertion has no pairId', () => {
+      editor.commands.insertContentAt(7, 'beautiful ');
+      const changes = getTrackedChanges(editor);
+      expect(changes).toHaveLength(1);
+      expect(changes[0].pairId).toBeUndefined();
+    });
+
+    it('a pure deletion has no pairId', () => {
+      editor.commands.deleteRange({ from: 1, to: 6 });
+      const changes = getTrackedChanges(editor);
+      expect(changes).toHaveLength(1);
+      expect(changes[0].pairId).toBeUndefined();
+    });
+
+    it('continued typing after a replacement extends the same pair', () => {
+      replaceHelloWithHi();
+      const pairId = getTrackedChanges(editor).find((c) => c.operation === 'insert')?.pairId;
+      // The caret sits at the end of "Hi" (position 3); keep typing there.
+      editor.commands.insertContentAt(3, '!');
+
+      const inserts = getTrackedChanges(editor).filter((c) => c.operation === 'insert');
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0].text).toBe('Hi!');
+      expect(inserts[0].pairId).toBe(pairId);
+    });
+
+    it('acceptChange(pairId) resolves both halves: old text removed, new text kept', () => {
+      replaceHelloWithHi();
+      const pairId = getTrackedChanges(editor)[0].pairId!;
+
+      editor.commands.acceptChange(pairId);
+      expect(hasMarkOfType(editor, 'tracked_insert')).toBe(false);
+      expect(hasMarkOfType(editor, 'tracked_delete')).toBe(false);
+      expect(getTextContent(editor)).toBe('Hi world');
+    });
+
+    it('rejectChange(pairId) resolves both halves: old text restored, new text removed', () => {
+      replaceHelloWithHi();
+      const pairId = getTrackedChanges(editor)[0].pairId!;
+
+      editor.commands.rejectChange(pairId);
+      expect(hasMarkOfType(editor, 'tracked_insert')).toBe(false);
+      expect(hasMarkOfType(editor, 'tracked_delete')).toBe(false);
+      expect(getTextContent(editor)).toBe('Hello world');
+    });
+
+    it('resolving by pairId is a single undo step', () => {
+      replaceHelloWithHi();
+      const pairId = getTrackedChanges(editor)[0].pairId!;
+
+      // Close the history group so undo targets the accept alone — without
+      // this, the accept merges into the replacement's group (newGroupDelay).
+      editor.view.dispatch(closeHistory(editor.state.tr));
+      editor.commands.acceptChange(pairId);
+      editor.commands.undo();
+      // One undo restores BOTH halves — they were resolved in one transaction.
+      expect(hasMarkOfType(editor, 'tracked_insert')).toBe(true);
+      expect(hasMarkOfType(editor, 'tracked_delete')).toBe(true);
     });
   });
 

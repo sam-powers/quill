@@ -3,6 +3,7 @@ import type { Editor } from '@tiptap/react';
 import type { Comment, TrackedChangeInfo } from '../types';
 import CommentCard from './CommentCard';
 import SuggestionCard from './SuggestionCard';
+import ReplacementCard from './ReplacementCard';
 
 interface CommentLayerProps {
   editor: Editor | null;
@@ -34,6 +35,39 @@ interface CardPosition {
 
 const CARD_HEIGHT_ESTIMATE = 120;
 const CARD_GAP = 8;
+
+// One margin card's worth of pending change(s): a lone insert or delete, or
+// the two halves of a replacement, presented and resolved together. The
+// replacement card is keyed and positioned by the shared pairId.
+type SuggestionGroup =
+  | { kind: 'single'; cardId: string; change: TrackedChangeInfo }
+  | { kind: 'replacement'; cardId: string; del: TrackedChangeInfo; ins: TrackedChangeInfo };
+
+function groupChanges(changes: TrackedChangeInfo[]): SuggestionGroup[] {
+  const groups: SuggestionGroup[] = [];
+  const byPair = new Map<string, TrackedChangeInfo[]>();
+  for (const c of changes) {
+    if (c.pairId) {
+      const list = byPair.get(c.pairId) ?? [];
+      list.push(c);
+      byPair.set(c.pairId, list);
+    } else {
+      groups.push({ kind: 'single', cardId: c.id, change: c });
+    }
+  }
+  for (const members of byPair.values()) {
+    const del = members.find((c) => c.operation === 'delete');
+    const ins = members.find((c) => c.operation === 'insert');
+    // One card only when both halves are present: a dangling pairId (its other
+    // half never got a mark, or was already resolved) renders alone.
+    if (del && ins && members.length === 2) {
+      groups.push({ kind: 'replacement', cardId: del.pairId!, del, ins });
+    } else {
+      for (const c of members) groups.push({ kind: 'single', cardId: c.id, change: c });
+    }
+  }
+  return groups;
+}
 
 function stackCards(cards: CardPosition[], heightFor: (id: string) => number): CardPosition[] {
   if (cards.length === 0) return cards;
@@ -110,16 +144,16 @@ export default function CommentLayer({
   const resolvedComments = comments.filter((c) => c.resolved);
   const displayComments = showResolved ? comments : visibleComments;
 
-  const pendingChanges = trackedChanges.filter((c) => c.status === 'pending');
+  const suggestionGroups = groupChanges(trackedChanges.filter((c) => c.status === 'pending'));
 
   // Stable refs so reflow's identity doesn't change on every render
   // (which would otherwise re-run the editor.on effect → setState → loop).
   const editorRef = useRef(editor);
   const displayCommentsRef = useRef(displayComments);
-  const pendingChangesRef = useRef(pendingChanges);
+  const suggestionGroupsRef = useRef(suggestionGroups);
   editorRef.current = editor;
   displayCommentsRef.current = displayComments;
-  pendingChangesRef.current = pendingChanges;
+  suggestionGroupsRef.current = suggestionGroups;
 
   const reflow = useCallback(() => {
     const ed = editorRef.current;
@@ -137,13 +171,16 @@ export default function CommentLayer({
       });
     }
 
-    for (const change of pendingChangesRef.current) {
-      const top = getChangeAnchorTop(ed, change.id);
+    for (const group of suggestionGroupsRef.current) {
+      // A replacement is anchored by its delete half — the original text's
+      // location, where the eye lands first.
+      const anchor = group.kind === 'replacement' ? group.del : group.change;
+      const top = getChangeAnchorTop(ed, anchor.id);
       rawCards.push({
-        cardId: change.id,
+        cardId: group.cardId,
         type: 'suggestion',
-        rawTop: top ?? change.from * 0.5,
-        nudgedTop: top ?? change.from * 0.5,
+        rawTop: top ?? anchor.from * 0.5,
+        nudgedTop: top ?? anchor.from * 0.5,
       });
     }
 
@@ -247,15 +284,34 @@ export default function CommentLayer({
           );
         })}
 
-        {pendingChanges.map((change) => {
-          const pos = cardPositions.find((p) => p.cardId === change.id);
-          const top = pos?.nudgedTop ?? change.from * 0.5;
+        {suggestionGroups.map((group) => {
+          const pos = cardPositions.find((p) => p.cardId === group.cardId);
+          if (group.kind === 'replacement') {
+            const { del, ins } = group;
+            return (
+              <ReplacementCard
+                key={group.cardId}
+                del={del}
+                ins={ins}
+                isActive={
+                  activeSuggestionId === group.cardId ||
+                  activeSuggestionId === del.id ||
+                  activeSuggestionId === ins.id
+                }
+                top={pos?.nudgedTop ?? del.from * 0.5}
+                onAccept={onAcceptChange}
+                onReject={onRejectChange}
+                onClick={onActivateSuggestion}
+              />
+            );
+          }
+          const change = group.change;
           return (
             <SuggestionCard
               key={change.id}
               change={change}
               isActive={change.id === activeSuggestionId}
-              top={top}
+              top={pos?.nudgedTop ?? change.from * 0.5}
               onAccept={onAcceptChange}
               onReject={onRejectChange}
               onClick={onActivateSuggestion}

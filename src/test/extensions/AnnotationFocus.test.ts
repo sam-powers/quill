@@ -25,19 +25,31 @@ function focusedText(editor: Editor): string {
     .join('');
 }
 
-function addTrackedInsert(editor: Editor, from: number, to: number, id: string) {
-  const type = editor.schema.marks['tracked_insert'];
+function addTracked(
+  editor: Editor,
+  markName: 'tracked_insert' | 'tracked_delete',
+  from: number,
+  to: number,
+  id: string,
+  pairId?: string,
+) {
+  const type = editor.schema.marks[markName];
   const dataTracked = {
     id,
-    operation: 'insert',
+    operation: markName === 'tracked_insert' ? 'insert' : 'delete',
     authorID: 'Anonymous',
     status: 'pending',
     createdAt: Date.now(),
     updatedAt: Date.now(),
+    ...(pairId ? { pairId } : {}),
   };
   editor.view.dispatch(
     editor.state.tr.addMark(from, to, type.create({ dataTracked, changeId: id })),
   );
+}
+
+function addTrackedInsert(editor: Editor, from: number, to: number, id: string) {
+  addTracked(editor, 'tracked_insert', from, to, id);
 }
 
 describe('AnnotationFocus extension', () => {
@@ -105,6 +117,24 @@ describe('AnnotationFocus extension', () => {
     expect(focusedText(editor)).toBe('world');
   });
 
+  it('focusing a replacement by pairId decorates both halves', () => {
+    editor = makeEditor('<p>Hello world</p>');
+    addTracked(editor, 'tracked_delete', 1, 6, 'd1', 'p1');
+    addTracked(editor, 'tracked_insert', 7, 12, 'i1', 'p1');
+    editor.commands.setAnnotationFocus('suggestion', 'p1');
+
+    expect(focusedText(editor)).toBe('Helloworld');
+  });
+
+  it('focusing one half by its own id decorates only that half', () => {
+    editor = makeEditor('<p>Hello world</p>');
+    addTracked(editor, 'tracked_delete', 1, 6, 'd1', 'p1');
+    addTracked(editor, 'tracked_insert', 7, 12, 'i1', 'p1');
+    editor.commands.setAnnotationFocus('suggestion', 'd1');
+
+    expect(focusedText(editor)).toBe('Hello');
+  });
+
   it('renders nothing once the annotation is gone from the document', () => {
     editor = makeEditor('<p>Hello world</p>');
     editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c1').run();
@@ -148,5 +178,13 @@ describe('findAnnotationRange', () => {
   it('returns null for an unknown id', () => {
     editor = makeEditor('<p>Hello world</p>');
     expect(findAnnotationRange(editor.state.doc, 'comment', 'nope')).toBeNull();
+  });
+
+  it('returns the combined range of both halves when given a pairId', () => {
+    editor = makeEditor('<p>Hello world</p>');
+    addTracked(editor, 'tracked_delete', 1, 6, 'd1', 'p1');
+    addTracked(editor, 'tracked_insert', 7, 12, 'i1', 'p1');
+
+    expect(findAnnotationRange(editor.state.doc, 'suggestion', 'p1')).toEqual({ from: 1, to: 12 });
   });
 });

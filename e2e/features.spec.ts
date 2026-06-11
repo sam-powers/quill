@@ -1019,6 +1019,116 @@ test('resolving a focused comment clears its focus', async ({ page }) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// SECTION 13c — Replacement suggestions (one card for delete + insert)
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Type "hello world" untracked, then replace "world" with "earth" in suggesting mode. */
+async function makeReplacement(page: Page, editor: Locator) {
+  await page.keyboard.type('hello world');
+  await page.waitForTimeout(100);
+  await enableSuggesting(page);
+  await editor.click();
+  // Keyboard selection occasionally drops a Shift+ArrowLeft — verify we really
+  // selected "world" before typing over it, retrying if not.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await selectLastNChars(page, 5);
+    const sel = await page.evaluate(() => window.getSelection()?.toString());
+    if (sel === 'world') break;
+  }
+  await page.keyboard.type('earth');
+  await page.waitForTimeout(300);
+}
+
+test('typing over a selection shows ONE replacement card with old → new', async ({ page }) => {
+  const { editor } = await setup(page);
+  await makeReplacement(page, editor);
+
+  await expect(page.locator('.suggestion-card')).toHaveCount(1);
+  const card = page.locator('.suggestion-card-replace');
+  await expect(card).toBeVisible();
+  await expect(card.locator('.suggestion-type-badge')).toHaveText('Replacement');
+  await expect(card.locator('.suggestion-replace-old')).toContainText('world');
+  await expect(card.locator('.suggestion-replace-new')).toContainText('earth');
+});
+
+test('accepting a replacement keeps the new text and removes the old', async ({ page }) => {
+  const { editor } = await setup(page);
+  await makeReplacement(page, editor);
+
+  await page.locator('.suggestion-accept-btn').click();
+  await page.waitForTimeout(200);
+  await expect(editor).toContainText('hello earth');
+  await expect(editor).not.toContainText('world');
+  const html = await editor.innerHTML();
+  expect(html).not.toContain('<ins');
+  expect(html).not.toContain('<del');
+  await expect(page.locator('.suggestion-card')).toHaveCount(0);
+});
+
+test('rejecting a replacement restores the original text', async ({ page }) => {
+  const { editor } = await setup(page);
+  await makeReplacement(page, editor);
+
+  await page.locator('.suggestion-reject-btn').click();
+  await page.waitForTimeout(200);
+  await expect(editor).toContainText('hello world');
+  await expect(editor).not.toContainText('earth');
+  const html = await editor.innerHTML();
+  expect(html).not.toContain('<ins');
+  expect(html).not.toContain('<del');
+  await expect(page.locator('.suggestion-card')).toHaveCount(0);
+});
+
+test('clicking a replacement card highlights both old and new text', async ({ page }) => {
+  const { editor } = await setup(page);
+  await makeReplacement(page, editor);
+
+  await page.locator('.suggestion-card-replace').click();
+  await expect(page.locator('.suggestion-card-active')).toBeVisible();
+  const focused = page.locator('.ProseMirror .annotation-focus');
+  await expect(focused.filter({ hasText: 'earth' }).first()).toBeVisible();
+  await expect(focused.filter({ hasText: 'world' }).first()).toBeVisible();
+});
+
+test('clicking either text half activates the replacement card', async ({ page }) => {
+  const { editor } = await setup(page);
+  await makeReplacement(page, editor);
+  await expect(page.locator('.suggestion-card-active')).toHaveCount(0);
+
+  // The inserted half…
+  await editor.locator('ins.track-insert').click();
+  await expect(page.locator('.suggestion-card-active')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.suggestion-card-active')).toHaveCount(0);
+
+  // …and the deleted half both focus the pair: card active, both texts lit.
+  await editor.locator('del.track-delete').click();
+  await expect(page.locator('.suggestion-card-active')).toBeVisible();
+  const focused = page.locator('.ProseMirror .annotation-focus');
+  await expect(focused.filter({ hasText: 'earth' }).first()).toBeVisible();
+  await expect(focused.filter({ hasText: 'world' }).first()).toBeVisible();
+});
+
+test('separate insert and delete still render two independent cards', async ({ page }) => {
+  const { editor } = await setup(page);
+  await page.keyboard.type('alpha beta');
+  await page.waitForTimeout(100);
+  await enableSuggesting(page);
+  await editor.click();
+  // Delete "beta" (pure deletion)…
+  await selectLastNChars(page, 4);
+  await page.keyboard.press('Backspace');
+  await page.waitForTimeout(150);
+  // …then insert at the start of the line (pure insertion, not adjacent).
+  await page.keyboard.press('Home');
+  await page.keyboard.type('intro ');
+  await page.waitForTimeout(300);
+
+  await expect(page.locator('.suggestion-card')).toHaveCount(2);
+  await expect(page.locator('.suggestion-card-replace')).toHaveCount(0);
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // SECTION 14 — Footer (word/char count, line/col, file name)
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1149,8 +1259,9 @@ test('replacement (type over selection) shows both <del> and <ins>', async ({ pa
   expect(html).toContain('<ins');
   await expect(editor).toContainText('hello'); // kept
   await expect(editor).toContainText('earth'); // inserted
-  // Two cards: one deletion, one insertion
-  expect(await page.locator('.suggestion-card').count()).toBe(2);
+  // The paired halves render as a single replacement card.
+  expect(await page.locator('.suggestion-card').count()).toBe(1);
+  await expect(page.locator('.suggestion-card-replace')).toHaveCount(1);
 });
 
 test('undo in suggesting mode reverts the last tracked change', async ({ page }) => {

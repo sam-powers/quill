@@ -74,6 +74,12 @@ export interface TrackedChangeInfo {
   authorID: string;
   status: 'pending' | 'accepted' | 'rejected';
   createdAt: number;
+  /**
+   * Set on both halves of a replacement (a delete and an insert made by the
+   * same step). Halves sharing a pairId render as one card and are accepted
+   * or rejected together — pass the pairId to acceptChange / rejectChange.
+   */
+  pairId?: string;
 }
 
 /**

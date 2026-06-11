@@ -50,10 +50,10 @@ State lives entirely in `App.tsx` — no Redux or context. The editor, comments,
 
 ### Tiptap Extensions (`src/extensions/`)
 
-- **`TrackChanges.ts`** — ProseMirror plugin that intercepts document transactions in suggesting mode and wraps changes with `tracked_insert` / `tracked_delete` marks.
+- **`TrackChanges.ts`** — ProseMirror plugin that intercepts document transactions in suggesting mode and wraps changes with `tracked_insert` / `tracked_delete` marks. A step that both deletes and inserts (typing over a selection, applied quill-edits) mints both halves with a shared `pairId`: `CommentLayer.tsx` groups them into one `ReplacementCard`, and `acceptChange` / `rejectChange` also accept a pairId, resolving both halves in one transaction.
 - **`Comment.ts`** — Tiptap mark extension for anchoring comment highlights to text ranges.
 - **`PendingComment.ts`** — Decoration (not a mark — never touches the document) that keeps the to-be-commented range highlighted while the comment composer is open. Driven by `setPendingCommentRange` / `clearPendingCommentRange`, wired to the composer lifecycle via `AddCommentButton`'s `onComposingChange`.
-- **`AnnotationFocus.ts`** — Decoration (never touches the document) that intensifies the in-text highlight of the active annotation (comment or suggestion). Driven by `setAnnotationFocus` / `clearAnnotationFocus`, mirrored from App's `activeAnnotation` state; also exports `findAnnotationRange` for live mark ranges. Clicks on annotated text are hit-tested in `Editor.tsx`'s `handleClick` (DOM-walk for `data-comment-id` / `data-change-id`) and reported to App, which focuses the innermost candidate.
+- **`AnnotationFocus.ts`** — Decoration (never touches the document) that intensifies the in-text highlight of the active annotation (comment or suggestion). Driven by `setAnnotationFocus` / `clearAnnotationFocus`, mirrored from App's `activeAnnotation` state; also exports `findAnnotationRange` for live mark ranges. A suggestion target id may be a change id or a replacement's `pairId` (matches both halves). Clicks on annotated text are hit-tested in `Editor.tsx`'s `handleClick` (DOM-walk for `data-comment-id` / `data-change-id`) and reported to App, which focuses the innermost candidate — promoting a replacement half to its pairId.
 
 ### Persistence Model
 

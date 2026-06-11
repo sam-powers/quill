@@ -502,9 +502,19 @@ export default function App() {
         return;
       }
       candidates.sort((a, b) => a.size - b.size);
-      setActiveAnnotation({ kind: candidates[0].kind, id: candidates[0].id });
+      const winner = candidates[0];
+      // A replacement half promotes to its pairId, so the whole pair — old
+      // and new text — focuses together along with its single card.
+      if (winner.kind === 'suggestion') {
+        const pairId = trackedChanges.find((c) => c.id === winner.id)?.pairId;
+        if (pairId) {
+          setActiveAnnotation({ kind: 'suggestion', id: pairId });
+          return;
+        }
+      }
+      setActiveAnnotation({ kind: winner.kind, id: winner.id });
     },
-    [editor],
+    [editor, trackedChanges],
   );
 
   function handleToggleSuggesting() {
@@ -632,8 +642,14 @@ export default function App() {
         prev?.kind === 'suggestion' && prev.id === id ? null : { kind: 'suggestion', id },
       );
       if (editor) {
-        const dom = editor.view.dom.querySelector(`[data-change-id="${id}"]`);
-        dom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // `id` may be a replacement's pairId, which no data-change-id
+        // attribute carries — resolve the live range and scroll to its start.
+        const range = findAnnotationRange(editor.state.doc, 'suggestion', id);
+        if (range) {
+          const { node } = editor.view.domAtPos(range.from);
+          const el = node instanceof HTMLElement ? node : node.parentElement;
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }
     },
     [editor],

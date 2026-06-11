@@ -191,6 +191,8 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
         return true;
       },
 
+      // `id` may be a change id or a pairId: passing a replacement's pairId
+      // resolves both halves in one transaction (a single undo step).
       acceptChange:
         (id: string) =>
         ({ state, dispatch }) => {
@@ -204,7 +206,7 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
             node.marks.forEach((mark) => {
               if (
                 (mark.type === insertType || mark.type === deleteType) &&
-                mark.attrs.dataTracked?.id === id
+                (mark.attrs.dataTracked?.id === id || mark.attrs.dataTracked?.pairId === id)
               ) {
                 positions.push({
                   from: pos,
@@ -242,7 +244,7 @@ export const TrackChanges = Extension.create<TrackChangesStorage>({
             node.marks.forEach((mark) => {
               if (
                 (mark.type === insertType || mark.type === deleteType) &&
-                mark.attrs.dataTracked?.id === id
+                (mark.attrs.dataTracked?.id === id || mark.attrs.dataTracked?.pairId === id)
               ) {
                 positions.push({
                   from: pos,
@@ -361,7 +363,7 @@ export function getTrackedChanges(editor: {
     for (const mark of node.marks) {
       if (mark.type !== insertType && mark.type !== deleteType) continue;
       if (!mark.attrs.dataTracked) continue;
-      const { id, operation, authorID, status, createdAt } = mark.attrs.dataTracked;
+      const { id, operation, authorID, status, createdAt, pairId } = mark.attrs.dataTracked;
       if (seen.has(id)) continue;
       seen.add(id);
       if (!changes.has(id)) {
@@ -374,6 +376,7 @@ export function getTrackedChanges(editor: {
           authorID,
           status,
           createdAt,
+          ...(pairId ? { pairId } : {}),
         });
       } else {
         const existing = changes.get(id)!;
@@ -402,6 +405,12 @@ type DataTracked = {
   status: string;
   createdAt: number;
   updatedAt: number;
+  /**
+   * Shared by the delete and insert halves of a replacement (one ReplaceStep
+   * that both removes and adds text), so the UI can present them as a single
+   * "Replace old → new" suggestion resolved atomically.
+   */
+  pairId?: string;
 };
 
 function adjacentTracked(
@@ -493,26 +502,38 @@ function transformForTracking(
     const hasInsert = slice && slice.size > 0;
     const offsetBefore = offset;
 
+    // Reuse an existing pending change by this author if one is adjacent/inside,
+    // otherwise mint a fresh dataTracked below. Returning the SAME object
+    // reference means PM's Mark.eq() merges text nodes instead of stacking marks.
+    const existingDelete = hasDelete
+      ? adjacentTracked(state.doc, rs.from, rs.to, insertType, deleteType, authorID, 'delete')
+      : null;
+    const existingInsert = hasInsert
+      ? adjacentTracked(state.doc, rs.from, rs.to, insertType, deleteType, authorID, 'insert')
+      : null;
+
+    // A step that both deletes and inserts is a replacement (typing over a
+    // selection, or an applied quill-edit). Pair the halves so the UI shows one
+    // card: two fresh halves share a new pairId, and a fresh half joining a
+    // reused one adopts its pairId (extending an in-progress replacement). A
+    // reused half that was never part of a pair stays unpaired — two cards,
+    // matching how those changes began.
+    const pairId =
+      hasDelete && hasInsert
+        ? (existingDelete?.pairId ??
+          existingInsert?.pairId ??
+          (!existingDelete && !existingInsert ? uuidv4() : undefined))
+        : undefined;
+
     if (hasDelete) {
-      // Reuse an existing pending delete by this author if one is adjacent/inside,
-      // otherwise mint a fresh dataTracked. Returning the SAME object reference
-      // means PM's Mark.eq() merges text nodes instead of stacking marks.
-      const existing = adjacentTracked(
-        state.doc,
-        rs.from,
-        rs.to,
-        insertType,
-        deleteType,
-        authorID,
-        'delete',
-      );
-      const deleteTracked: DataTracked = existing ?? {
+      const deleteTracked: DataTracked = existingDelete ?? {
         id: uuidv4(),
         operation: 'delete',
         authorID,
         status: 'pending',
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(pairId ? { pairId } : {}),
       };
 
       const insertRanges: Array<{ from: number; to: number }> = [];
@@ -598,22 +619,14 @@ function transformForTracking(
     }
 
     if (hasInsert) {
-      const existing = adjacentTracked(
-        state.doc,
-        rs.from,
-        rs.to,
-        insertType,
-        deleteType,
-        authorID,
-        'insert',
-      );
-      const insertTracked: DataTracked = existing ?? {
+      const insertTracked: DataTracked = existingInsert ?? {
         id: uuidv4(),
         operation: 'insert',
         authorID,
         status: 'pending',
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        ...(pairId ? { pairId } : {}),
       };
 
       const insertAt = rs.from + offset;
