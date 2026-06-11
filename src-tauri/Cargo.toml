@@ -1,6 +1,6 @@
 [package]
 name = "quill"
-version = "0.2.0"
+version = "0.3.0"
 description = "The document editor that can hold a conversation — tracked changes, inline comments, and Claude replies for plain Markdown files."
 authors = ["Sam Powers <samueldarinpowers@gmail.com>"]
 edition = "2021"
