@@ -1045,6 +1045,9 @@ fn spawn_claude_resume(
     }
     cmd.arg(&prompt)
         .current_dir(&cwd)
+        // If Quill was launched from a shell with an API key exported, the CLI
+        // would silently bill that key instead of the user's `claude` login.
+        .env_remove("ANTHROPIC_API_KEY")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
