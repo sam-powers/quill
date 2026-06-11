@@ -108,6 +108,7 @@ export function buildPrompt(
   scope: EditScope,
   compaction: CompactionInfo | null,
   context: PromptContext | null,
+  freshSession = false,
 ): string {
   // `userText` is appended explicitly as the final line below. Depending on
   // when React flushed state, the same message may or may not already be the
@@ -124,7 +125,10 @@ export function buildPrompt(
   threadLines.push(`- User just said: ${userText}`);
 
   const head = [
-    'You are responding inline on a markdown document you previously authored.',
+    // A session Quill minted for this doc never wrote it — don't claim it did.
+    freshSession
+      ? 'You are responding inline on a markdown document the user is editing in Quill.'
+      : 'You are responding inline on a markdown document you previously authored.',
     '',
     'Comment thread so far:',
     threadLines.join('\n'),
@@ -185,9 +189,11 @@ export function buildPrompt(
     ...editProtocol,
     ...contextSection,
     '=== FULL DOCUMENT (context) ===',
-    compaction?.compacted
-      ? 'Your context was compacted since you wrote this; full current document follows:'
-      : 'Current document (may have been edited since you wrote it):',
+    freshSession
+      ? 'Here is the full current document:'
+      : compaction?.compacted
+        ? 'Your context was compacted since you wrote this; full current document follows:'
+        : 'Current document (may have been edited since you wrote it):',
     '---',
     docMarkdown,
     '---',
@@ -196,7 +202,13 @@ export function buildPrompt(
 
 interface QuillMock {
   spawn: (
-    args: { sessionId: string; cwd: string; prompt: string; addDir: string | null },
+    args: {
+      sessionId: string;
+      cwd: string;
+      prompt: string;
+      addDir: string | null;
+      allowCreate: boolean;
+    },
     onEvent: (event: ChunkEvent) => void,
   ) => string; // returns cancel token
   cancel?: (token: string) => void;
@@ -220,8 +232,13 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
       const replyId = opts.startAIReply(comment.id);
       const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
 
-      let compaction: CompactionInfo | null = mock?.compaction ?? null;
-      if (!mock) {
+      // A Quill-minted session never authored the doc, so the compaction
+      // check is meaningless for it — worse, its own earlier replies could be
+      // mistaken for "the markdown it originally wrote" and produce a bogus
+      // diff. Always send such sessions the full document.
+      const fresh = binding.createdByQuill === true;
+      let compaction: CompactionInfo | null = fresh ? null : (mock?.compaction ?? null);
+      if (!mock && !fresh) {
         try {
           compaction = await invoke<CompactionInfo>('check_session_compacted', {
             sessionId: binding.sessionId,
@@ -258,6 +275,7 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
         scope,
         compaction,
         context,
+        fresh,
       );
 
       // Per-ask streaming state. We accumulate the raw text and only surface the
@@ -345,7 +363,13 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
 
       if (mock) {
         const token = mock.spawn(
-          { sessionId: binding.sessionId, cwd: binding.cwd, prompt, addDir: contextFolder },
+          {
+            sessionId: binding.sessionId,
+            cwd: binding.cwd,
+            prompt,
+            addDir: contextFolder,
+            allowCreate: fresh,
+          },
           dispatch,
         );
         tokensRef.current.set(replyId, token);
@@ -361,6 +385,7 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           cwd: binding.cwd,
           prompt,
           addDir: contextFolder,
+          allowCreate: fresh,
           onEvent: channel,
         });
         tokensRef.current.set(replyId, cancelToken);

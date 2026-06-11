@@ -14,7 +14,7 @@ import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
 import { getTrackedChanges } from './extensions/TrackChanges';
 import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
-import { basename } from './utils/path';
+import { basename, dirname } from './utils/path';
 import { sidecarPath } from './utils/sidecarPath';
 import type {
   AISessionBinding,
@@ -686,6 +686,7 @@ export default function App() {
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
         onPick={handlePickSession}
+        newSessionCwd={filePath ? dirname(filePath) : null}
       />
 
       {discardGuard && (
