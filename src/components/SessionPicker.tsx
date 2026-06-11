@@ -115,7 +115,8 @@ export default function SessionPicker({
             {!sessions && !loadError && <div className="session-picker-loading">Loading…</div>}
             {sessions?.length === 0 && (
               <div className="session-picker-empty">
-                No Claude Code sessions found under <code>~/.claude/projects/</code>.
+                No Claude Code sessions found under <code>~/.claude/projects/</code> — you can still
+                give this document a fresh one with “Start new session” below.
               </div>
             )}
             {sessions?.map((s) => (

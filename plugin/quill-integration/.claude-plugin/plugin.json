@@ -10,6 +10,6 @@
   },
   "homepage": "https://github.com/sam-powers/quill",
   "repository": "https://github.com/sam-powers/quill",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": ["quill", "editor", "markdown", "track-changes", "comments"]
 }

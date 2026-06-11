@@ -4,6 +4,8 @@
 
 ![Claude Code researches Quill, writes a report on using it at work, opens it in Quill, and its rewrite arrives as tracked changes you accept or reject](./docs/assets/hero.gif)
 
+Chat tools put your document inside a conversation. Quill puts the conversation inside your document.
+
 Files are plain `.md` on disk; review metadata rides alongside in a sidecar, so the Markdown stays portable and editable anywhere.
 
 > **The defining feature:** a document can be linked to the Claude Code session that authored it. A reviewer can reply to a comment with `@claude` and get an inline, context-aware answer from the same agent — even after that session has been compacted. And for a document no session wrote — one someone sent you — **Start new session** spins up a fresh Claude session just for it.
@@ -67,6 +69,8 @@ Editing, tracked changes, and comments work standalone. The `@claude` features �
    ```
 
 The loop this enables: draft a document with Claude Code, run `/quill-integration:open-in-quill draft.md` in the session, and the document opens in Quill already linked to that session — comment `@claude …` anywhere and the agent that wrote the document answers, or revises it as tracked changes for you to accept or reject. See the [plugin README](./plugin/quill-integration/README.md) for details.
+
+The document doesn't have to start in Claude Code, either: open any Markdown file — including one someone sent you — and choose **Start new session** in the session picker to give it a Claude conversation of its own.
 
 ## Building from source
 
