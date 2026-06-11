@@ -517,6 +517,23 @@ export default function App() {
     if (info) setPendingCommentSelection(info);
   }, []);
 
+  // Keep the target range visibly highlighted while the comment composer is
+  // open (the native selection highlight disappears when the textarea takes
+  // focus). Rendered as a decoration, so it never dirties the document; it
+  // hands off to the real comment mark on submit and vanishes on cancel.
+  const handleComposingChange = useCallback(
+    (composing: boolean) => {
+      if (!editor || editor.isDestroyed) return;
+      if (composing) {
+        const sel = pendingCommentSelection ?? selectionInfo;
+        if (sel) editor.commands.setPendingCommentRange(sel.from, sel.to);
+      } else {
+        editor.commands.clearPendingCommentRange();
+      }
+    },
+    [editor, pendingCommentSelection, selectionInfo],
+  );
+
   const handleDeleteComment = useCallback(
     (commentId: string) => {
       deleteComment(commentId);
@@ -643,6 +660,7 @@ export default function App() {
                 visible
                 author={AUTHOR}
                 onAdd={handleAddComment}
+                onComposingChange={handleComposingChange}
               />
             );
           })()}

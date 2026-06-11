@@ -6,6 +6,7 @@ import Link from '@tiptap/extension-link';
 import { TextSelection } from '@tiptap/pm/state';
 import { Markdown } from 'tiptap-markdown';
 import { CommentMark } from '../extensions/Comment';
+import { PendingComment } from '../extensions/PendingComment';
 import { TrackedInsert, TrackedDelete, TrackChanges } from '../extensions/TrackChanges';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 
@@ -60,6 +61,7 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
         Link.configure({ openOnClick: false }),
         Markdown.configure({ html: false, tightLists: true }),
         CommentMark,
+        PendingComment,
         TrackedInsert,
         TrackedDelete,
         TrackChanges,

@@ -722,6 +722,48 @@ test('clicking "+" opens compose box', async ({ page }) => {
   await expect(page.locator('.add-comment-compose textarea')).toBeFocused();
 });
 
+test('selected range stays highlighted while composing a comment', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await page.locator('.add-comment-btn').click();
+  // The textarea has focus (native selection is gone) — the decoration
+  // stands in for it.
+  await expect(page.locator('.ProseMirror .pending-comment')).toContainText('hello world');
+  await page.locator('.add-comment-compose textarea').fill('still highlighted?');
+  await expect(page.locator('.ProseMirror .pending-comment')).toContainText('hello world');
+});
+
+test('pending highlight hands off to the comment mark on submit', async ({ page }) => {
+  const { editor } = await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await addCommentViaPlusButton(page, 'shipped');
+  await expect(page.locator('.ProseMirror .pending-comment')).toHaveCount(0);
+  expect(await editor.innerHTML()).toContain('comment-mark');
+});
+
+test('pending highlight disappears when the composer is cancelled', async ({ page }) => {
+  const { editor } = await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await page.locator('.add-comment-btn').click();
+  await expect(page.locator('.ProseMirror .pending-comment')).toBeVisible();
+  await page.locator('.add-comment-compose .btn-ghost').click(); // Cancel
+  await expect(page.locator('.ProseMirror .pending-comment')).toHaveCount(0);
+  expect(await editor.innerHTML()).not.toContain('comment-mark');
+});
+
+test('Escape in the composer also clears the pending highlight', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await page.locator('.add-comment-btn').click();
+  await expect(page.locator('.ProseMirror .pending-comment')).toBeVisible();
+  await page.locator('.add-comment-compose textarea').press('Escape');
+  await expect(page.locator('.ProseMirror .pending-comment')).toHaveCount(0);
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // SECTION 13 — Comments: adding, replying, resolving, deleting
 // ────────────────────────────────────────────────────────────────────────────
