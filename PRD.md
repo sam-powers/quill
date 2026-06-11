@@ -112,4 +112,4 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 
 ## 7. Backlog / known gaps
 
-_(No open items in this section currently.)_
+- **Voice interaction** — talk to the document instead of (or alongside) typing: e.g. dictating comments, speaking a `@claude` request, or a hands-free review pass. Scope, interaction model, and speech stack (OS-native dictation vs. a speech-to-text API) all unexplored; parked here until prioritized.
