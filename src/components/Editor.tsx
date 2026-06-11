@@ -7,6 +7,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import { Markdown } from 'tiptap-markdown';
 import { CommentMark } from '../extensions/Comment';
 import { PendingComment } from '../extensions/PendingComment';
+import { AnnotationFocus } from '../extensions/AnnotationFocus';
 import { TrackedInsert, TrackedDelete, TrackChanges } from '../extensions/TrackChanges';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 
@@ -28,6 +29,13 @@ interface EditorProps {
   onUpdate: () => void;
   onSelectionChange: (info: SelectionInfo | null) => void;
   onEditorReady: (editor: TiptapEditor) => void;
+  onAnnotationClick: (info: AnnotationClickInfo) => void;
+}
+
+/** Every annotation layered under a click, innermost DOM element first. */
+export interface AnnotationClickInfo {
+  commentIds: string[];
+  suggestionIds: string[];
 }
 
 export interface SelectionInfo {
@@ -40,15 +48,25 @@ export interface SelectionInfo {
 
 const QuillEditor = forwardRef<EditorRef, EditorProps>(
   (
-    { initialContent = '', isSuggesting, authorID, onUpdate, onSelectionChange, onEditorReady },
+    {
+      initialContent = '',
+      isSuggesting,
+      authorID,
+      onUpdate,
+      onSelectionChange,
+      onEditorReady,
+      onAnnotationClick,
+    },
     ref,
   ) => {
     const onUpdateRef = useRef(onUpdate);
     const onSelectionRef = useRef(onSelectionChange);
     const onReadyRef = useRef(onEditorReady);
+    const onAnnotationClickRef = useRef(onAnnotationClick);
     onUpdateRef.current = onUpdate;
     onSelectionRef.current = onSelectionChange;
     onReadyRef.current = onEditorReady;
+    onAnnotationClickRef.current = onAnnotationClick;
 
     const editor = useEditor({
       extensions: [
@@ -62,6 +80,7 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
         Markdown.configure({ html: false, tightLists: true }),
         CommentMark,
         PendingComment,
+        AnnotationFocus,
         TrackedInsert,
         TrackedDelete,
         TrackChanges,
@@ -83,6 +102,29 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
           const tr = state.tr.setSelection(TextSelection.create(state.doc, anchor, target));
           view.dispatch(tr.scrollIntoView());
           return true;
+        },
+        // Hit-test annotation clicks against the rendered DOM (not doc
+        // positions) so only text the user visually clicked counts — a
+        // position at a mark boundary would otherwise report neighbors.
+        // Overlapping annotations nest in the DOM, so walking up from the
+        // click target collects every layer. An empty result is reported
+        // too: clicking plain text is how the user dismisses the focus.
+        handleClick(view, _pos, event) {
+          const commentIds: string[] = [];
+          const suggestionIds: string[] = [];
+          let el =
+            event.target instanceof HTMLElement
+              ? event.target.closest<HTMLElement>('[data-comment-id], [data-change-id]')
+              : null;
+          while (el && el !== view.dom && view.dom.contains(el)) {
+            const commentId = el.getAttribute('data-comment-id');
+            const changeId = el.getAttribute('data-change-id');
+            if (commentId && !commentIds.includes(commentId)) commentIds.push(commentId);
+            if (changeId && !suggestionIds.includes(changeId)) suggestionIds.push(changeId);
+            el = el.parentElement;
+          }
+          onAnnotationClickRef.current({ commentIds, suggestionIds });
+          return false;
         },
       },
       onUpdate() {

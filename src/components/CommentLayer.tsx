@@ -8,6 +8,7 @@ interface CommentLayerProps {
   editor: Editor | null;
   comments: Comment[];
   activeCommentId: string | null;
+  activeSuggestionId: string | null;
   containerRef: React.RefObject<HTMLDivElement | null>;
   trackedChanges: TrackedChangeInfo[];
   scrollTop: number;
@@ -19,6 +20,7 @@ interface CommentLayerProps {
   onUnresolve: (commentId: string) => void;
   onDelete: (commentId: string) => void;
   onActivate: (commentId: string) => void;
+  onActivateSuggestion: (id: string) => void;
   onAcceptChange: (id: string) => void;
   onRejectChange: (id: string) => void;
 }
@@ -83,6 +85,7 @@ export default function CommentLayer({
   editor,
   comments,
   activeCommentId,
+  activeSuggestionId,
   containerRef,
   trackedChanges,
   scrollTop,
@@ -94,6 +97,7 @@ export default function CommentLayer({
   onUnresolve,
   onDelete,
   onActivate,
+  onActivateSuggestion,
   onAcceptChange,
   onRejectChange,
 }: CommentLayerProps) {
@@ -250,9 +254,11 @@ export default function CommentLayer({
             <SuggestionCard
               key={change.id}
               change={change}
+              isActive={change.id === activeSuggestionId}
               top={top}
               onAccept={onAcceptChange}
               onReject={onRejectChange}
+              onClick={onActivateSuggestion}
             />
           );
         })}

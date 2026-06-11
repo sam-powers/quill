@@ -33,6 +33,7 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
   - Typed text is marked as a tracked **insertion**; deleted text is marked as a tracked **deletion** rather than removed.
   - A **Suggesting** badge shows in the footer.
   - Each pending change surfaces a **suggestion card** in the margin with per-change **Accept** / **Reject**.
+  - Suggested text and its card are **click-linked both ways** (Google-Docs style): clicking the tracked text in the document activates its card, and clicking a card intensifies the highlight on its text. See §3.3a.
   - When any pending changes exist, the toolbar shows **Accept All** / **Reject All**.
   - Accepting an insertion keeps the text and drops the mark; rejecting removes it. Accepting a deletion removes the text; rejecting restores it.
   - Replacing text (typing over a selection) is represented as a **paired deletion + insertion** — two independent tracked changes, each accepted or rejected on its own — not a single "replacement" change.
@@ -43,8 +44,17 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 - Select text → a **+** button appears in the margin → add a comment anchored to that text range.
 - While the composer is open, the target range stays **visibly highlighted** (a provisional, dashed-underline version of the comment highlight) even though the textarea has focus. It becomes the real highlight on submit and disappears on cancel. Rendered as an editor decoration — never written into the document, so it can't dirty the file.
 - Comments render as **cards in the right margin**, positioned next to their anchor with a collision-avoidance nudge so they don't overlap.
-- Clicking a comment **activates** it and scrolls its anchor into view.
 - Each comment is a **thread**: add replies, **resolve** / **unresolve**, and **delete** (which also removes the in-text highlight).
+
+### 3.3a Annotation focus — text ↔ card click linking
+
+Comments and suggestions share one **focus** model, mirroring Google Docs:
+
+- **Clicking annotated text in the document** activates the matching margin card (outlined): commented text pulls up its comment card; tracked-change text pulls up its Accept/Reject card.
+- **Clicking a card** does the reverse: the card activates, the document scrolls its text into view, and the text gets an **intensified highlight** (an editor decoration layered over the comment/track-change coloring — never written into the document).
+- Exactly **one annotation is focused at a time**. When annotations overlap (e.g. a comment inside a tracked insertion), a click focuses the **innermost** one — the smallest text range.
+- The focus is dismissed by **Escape**, by **clicking plain text**, by clicking the active card again (toggle), or automatically when the focused annotation goes away (comment resolved or deleted, suggestion accepted or rejected).
+- Adding a new comment focuses it immediately.
 
 ### 3.4 AI replies (`@claude`) — the differentiator
 

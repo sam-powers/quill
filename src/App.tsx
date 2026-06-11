@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { Editor as TiptapEditor } from '@tiptap/react';
 import QuillEditor from './components/Editor';
-import type { EditorRef, SelectionInfo } from './components/Editor';
+import type { AnnotationClickInfo, EditorRef, SelectionInfo } from './components/Editor';
 import Toolbar from './components/Toolbar';
 import Footer from './components/Footer';
 import CommentLayer from './components/CommentLayer';
@@ -13,6 +13,8 @@ import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
 import { getTrackedChanges } from './extensions/TrackChanges';
+import { findAnnotationRange } from './extensions/AnnotationFocus';
+import type { AnnotationKind } from './extensions/AnnotationFocus';
 import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
 import { basename, dirname } from './utils/path';
 import { sidecarPath } from './utils/sidecarPath';
@@ -34,7 +36,14 @@ export default function App() {
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
   const editorRef = useRef<EditorRef>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
-  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  // The one annotation (comment or suggestion) currently in focus: its card
+  // is outlined and its text highlighted. Set by clicking either side.
+  const [activeAnnotation, setActiveAnnotation] = useState<{
+    kind: AnnotationKind;
+    id: string;
+  } | null>(null);
+  const activeCommentId = activeAnnotation?.kind === 'comment' ? activeAnnotation.id : null;
+  const activeSuggestionId = activeAnnotation?.kind === 'suggestion' ? activeAnnotation.id : null;
   const [selectionInfo, setSelectionInfo] = useState<SelectionInfo | null>(null);
   const [pendingCommentSelection, setPendingCommentSelection] = useState<SelectionInfo | null>(
     null,
@@ -397,7 +406,10 @@ export default function App() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       const meta = e.metaKey || e.ctrlKey;
-      if (!meta) return;
+      if (!meta) {
+        if (e.key === 'Escape') setActiveAnnotation(null);
+        return;
+      }
 
       if (!hasNativeMenu) {
         if (e.key === 's' && e.shiftKey) {
@@ -452,6 +464,49 @@ export default function App() {
     };
   }, [editor]);
 
+  // Mirror the active annotation into the editor as a focus decoration so
+  // its text is visibly highlighted alongside the outlined card.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    if (activeAnnotation) {
+      editor.commands.setAnnotationFocus(activeAnnotation.kind, activeAnnotation.id);
+    } else {
+      editor.commands.clearAnnotationFocus();
+    }
+  }, [editor, activeAnnotation]);
+
+  // Drop the focus when the annotation it points at goes away (resolved,
+  // accepted, rejected, deleted) — a stale focus would point at nothing.
+  const clearActiveIf = useCallback((kind: AnnotationKind, id: string) => {
+    setActiveAnnotation((prev) => (prev?.kind === kind && prev.id === id ? null : prev));
+  }, []);
+
+  // A click in the editor reports every annotation layered under it (or none —
+  // clicking plain text dismisses the focus). Focus the innermost one, by
+  // smallest live range, like Google Docs.
+  const handleAnnotationClick = useCallback(
+    ({ commentIds, suggestionIds }: AnnotationClickInfo) => {
+      const doc = editor?.state.doc;
+      if (!doc) return;
+      const candidates: { kind: AnnotationKind; id: string; size: number }[] = [];
+      for (const id of commentIds) {
+        const range = findAnnotationRange(doc, 'comment', id);
+        if (range) candidates.push({ kind: 'comment', id, size: range.to - range.from });
+      }
+      for (const id of suggestionIds) {
+        const range = findAnnotationRange(doc, 'suggestion', id);
+        if (range) candidates.push({ kind: 'suggestion', id, size: range.to - range.from });
+      }
+      if (candidates.length === 0) {
+        setActiveAnnotation(null);
+        return;
+      }
+      candidates.sort((a, b) => a.size - b.size);
+      setActiveAnnotation({ kind: candidates[0].kind, id: candidates[0].id });
+    },
+    [editor],
+  );
+
   function handleToggleSuggesting() {
     setIsSuggesting((v) => !v);
   }
@@ -467,15 +522,17 @@ export default function App() {
   const handleAcceptChange = useCallback(
     (id: string) => {
       editor?.commands.acceptChange(id);
+      clearActiveIf('suggestion', id);
     },
-    [editor],
+    [editor, clearActiveIf],
   );
 
   const handleRejectChange = useCallback(
     (id: string) => {
       editor?.commands.rejectChange(id);
+      clearActiveIf('suggestion', id);
     },
-    [editor],
+    [editor, clearActiveIf],
   );
 
   const handleAddComment = useCallback(
@@ -505,7 +562,7 @@ export default function App() {
           }
         }
       }
-      setActiveCommentId(comment.id);
+      setActiveAnnotation({ kind: 'comment', id: comment.id });
       setPendingCommentSelection(null);
       setSelectionInfo(null);
     },
@@ -538,17 +595,44 @@ export default function App() {
     (commentId: string) => {
       deleteComment(commentId);
       editor?.commands.unsetComment(commentId);
-      if (activeCommentId === commentId) setActiveCommentId(null);
+      clearActiveIf('comment', commentId);
     },
-    [deleteComment, editor, activeCommentId],
+    [deleteComment, editor, clearActiveIf],
+  );
+
+  // Resolving hides the card (unless "Show resolved" is on), so it also
+  // drops the focus rather than leaving an outline on a vanished card.
+  const handleResolveComment = useCallback(
+    (commentId: string) => {
+      resolveComment(commentId);
+      clearActiveIf('comment', commentId);
+    },
+    [resolveComment, clearActiveIf],
   );
 
   const handleActivateComment = useCallback(
     (commentId: string) => {
-      setActiveCommentId((prev) => (prev === commentId ? null : commentId));
+      setActiveAnnotation((prev) =>
+        prev?.kind === 'comment' && prev.id === commentId
+          ? null
+          : { kind: 'comment', id: commentId },
+      );
       // Scroll the anchor into view
       if (editor) {
         const dom = editor.view.dom.querySelector(`[data-comment-id="${commentId}"]`);
+        dom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    },
+    [editor],
+  );
+
+  const handleActivateSuggestion = useCallback(
+    (id: string) => {
+      setActiveAnnotation((prev) =>
+        prev?.kind === 'suggestion' && prev.id === id ? null : { kind: 'suggestion', id },
+      );
+      if (editor) {
+        const dom = editor.view.dom.querySelector(`[data-change-id="${id}"]`);
         dom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
     },
@@ -638,6 +722,7 @@ export default function App() {
               onUpdate={markDirty}
               onSelectionChange={handleSelectionChange}
               onEditorReady={setEditor}
+              onAnnotationClick={handleAnnotationClick}
             />
           </div>
         </div>
@@ -669,6 +754,7 @@ export default function App() {
           editor={editor}
           comments={comments}
           activeCommentId={activeCommentId}
+          activeSuggestionId={activeSuggestionId}
           containerRef={commentLayerRef}
           trackedChanges={trackedChanges}
           scrollTop={scrollTop}
@@ -676,10 +762,11 @@ export default function App() {
           onAIReplyRequest={handleAIReplyRequest}
           onCancelAIReply={claudeReply.cancel}
           onOpenSessionPicker={() => setPickerOpen(true)}
-          onResolve={resolveComment}
+          onResolve={handleResolveComment}
           onUnresolve={unresolveComment}
           onDelete={handleDeleteComment}
           onActivate={handleActivateComment}
+          onActivateSuggestion={handleActivateSuggestion}
           onAcceptChange={handleAcceptChange}
           onRejectChange={handleRejectChange}
         />

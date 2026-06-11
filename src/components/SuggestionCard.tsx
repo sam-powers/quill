@@ -2,9 +2,11 @@ import type { TrackedChangeInfo } from '../types';
 
 interface SuggestionCardProps {
   change: TrackedChangeInfo;
+  isActive: boolean;
   top: number;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onClick: (id: string) => void;
 }
 
 function timeAgo(ts: number): string {
@@ -17,16 +19,24 @@ function timeAgo(ts: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-export default function SuggestionCard({ change, top, onAccept, onReject }: SuggestionCardProps) {
+export default function SuggestionCard({
+  change,
+  isActive,
+  top,
+  onAccept,
+  onReject,
+  onClick,
+}: SuggestionCardProps) {
   const isInsert = change.operation === 'insert';
   const preview = change.text.slice(0, 60) + (change.text.length > 60 ? '…' : '');
   const authorLabel = change.authorID === 'claude' ? 'Claude (AI)' : change.authorID;
 
   return (
     <div
-      className={`suggestion-card ${isInsert ? 'suggestion-card-insert' : 'suggestion-card-delete'}`}
+      className={`suggestion-card ${isInsert ? 'suggestion-card-insert' : 'suggestion-card-delete'}${isActive ? ' suggestion-card-active' : ''}`}
       style={{ top }}
       data-card-id={change.id}
+      onClick={() => onClick(change.id)}
     >
       <div className="comment-thread-line" />
 

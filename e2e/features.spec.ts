@@ -880,6 +880,145 @@ test('multiple comments stack without overlapping', async ({ page }) => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
+// SECTION 13b — Annotation focus: text ↔ card click linking
+// ────────────────────────────────────────────────────────────────────────────
+
+test('adding a comment focuses it: card active and text highlighted', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await addCommentViaPlusButton(page, 'note');
+  await expect(page.locator('.comment-card-active')).toBeVisible();
+  await expect(page.locator('.ProseMirror .annotation-focus')).toContainText('hello world');
+});
+
+test('Escape clears the annotation focus', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await addCommentViaPlusButton(page, 'note');
+  await expect(page.locator('.comment-card-active')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.comment-card-active')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror .annotation-focus')).toHaveCount(0);
+});
+
+test('clicking commented text activates its card', async ({ page }) => {
+  const { editor } = await setup(page);
+  await page.keyboard.type('hello world');
+  await selectAll(page);
+  await addCommentViaPlusButton(page, 'note');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.comment-card-active')).toHaveCount(0);
+
+  await editor.locator('mark.comment-mark').click();
+  await expect(page.locator('.comment-card-active')).toBeVisible();
+  await expect(page.locator('.ProseMirror .annotation-focus')).toContainText('hello world');
+});
+
+test('clicking plain text clears the annotation focus', async ({ page }) => {
+  const { editor } = await setup(page);
+  await page.keyboard.type('the quick brown fox');
+  await selectLastNChars(page, 3); // "fox"
+  await addCommentViaPlusButton(page, 'animal');
+  await expect(page.locator('.comment-card-active')).toBeVisible();
+
+  // Click the un-commented start of the paragraph.
+  await editor
+    .locator('p')
+    .first()
+    .click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('.comment-card-active')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror .annotation-focus')).toHaveCount(0);
+});
+
+test('clicking suggested text activates its accept/reject card', async ({ page }) => {
+  const { editor } = await setup(page);
+  await enableSuggesting(page);
+  await editor.click();
+  await page.keyboard.type('suggested text');
+  await page.waitForTimeout(150);
+  await expect(page.locator('.suggestion-card')).toHaveCount(1);
+  await expect(page.locator('.suggestion-card-active')).toHaveCount(0);
+
+  await editor.locator('ins.track-insert').click();
+  await expect(page.locator('.suggestion-card-active')).toBeVisible();
+  await expect(page.locator('.ProseMirror .annotation-focus')).toContainText('suggested text');
+});
+
+test('clicking a suggestion card highlights its text in the document', async ({ page }) => {
+  const { editor } = await setup(page);
+  await enableSuggesting(page);
+  await editor.click();
+  await page.keyboard.type('suggested text');
+  await page.waitForTimeout(150);
+
+  await page.locator('.suggestion-card').click();
+  await expect(page.locator('.suggestion-card-active')).toBeVisible();
+  await expect(page.locator('.ProseMirror .annotation-focus')).toContainText('suggested text');
+
+  // Clicking the active card again toggles the focus off.
+  await page.locator('.suggestion-card').click();
+  await expect(page.locator('.suggestion-card-active')).toHaveCount(0);
+  await expect(page.locator('.ProseMirror .annotation-focus')).toHaveCount(0);
+});
+
+test('clicking a comment card highlights its anchor text', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.type('the quick brown fox');
+  await selectLastNChars(page, 3); // "fox"
+  await addCommentViaPlusButton(page, 'animal');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.ProseMirror .annotation-focus')).toHaveCount(0);
+
+  await page.locator('.comment-card').click();
+  await expect(page.locator('.comment-card-active')).toBeVisible();
+  await expect(page.locator('.ProseMirror .annotation-focus')).toContainText('fox');
+});
+
+test('overlapping annotations: the innermost one wins the click', async ({ page }) => {
+  const { editor } = await setup(page);
+  await enableSuggesting(page);
+  await editor.click();
+  await page.keyboard.type('hello world');
+  await page.waitForTimeout(150);
+  // Comment on "world" — nested inside the tracked insertion covering it all.
+  await selectLastNChars(page, 5);
+  await addCommentViaPlusButton(page, 'inner');
+  await page.keyboard.press('Escape');
+
+  await editor.locator('mark.comment-mark').click();
+  await expect(page.locator('.comment-card-active')).toBeVisible();
+  await expect(page.locator('.suggestion-card-active')).toHaveCount(0);
+});
+
+test('accepting a suggestion clears its focus', async ({ page }) => {
+  const { editor } = await setup(page);
+  await enableSuggesting(page);
+  await editor.click();
+  await page.keyboard.type('keep me');
+  await page.waitForTimeout(150);
+  await editor.locator('ins.track-insert').click();
+  await expect(page.locator('.suggestion-card-active')).toBeVisible();
+
+  await page.locator('.suggestion-accept-btn').click();
+  await page.waitForTimeout(150);
+  await expect(page.locator('.ProseMirror .annotation-focus')).toHaveCount(0);
+});
+
+test('resolving a focused comment clears its focus', async ({ page }) => {
+  await setup(page);
+  await page.keyboard.type('hello');
+  await selectAll(page);
+  await addCommentViaPlusButton(page, 'todo');
+  await expect(page.locator('.ProseMirror .annotation-focus')).toBeVisible();
+
+  await page.locator('.comment-resolve-btn').click();
+  await page.waitForTimeout(150);
+  await expect(page.locator('.ProseMirror .annotation-focus')).toHaveCount(0);
+});
+
+// ────────────────────────────────────────────────────────────────────────────
 // SECTION 14 — Footer (word/char count, line/col, file name)
 // ────────────────────────────────────────────────────────────────────────────
 
