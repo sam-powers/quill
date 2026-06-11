@@ -1,6 +1,6 @@
 # Quill User Guide
 
-Quill is a desktop editor for **reviewing and revising documents**, the way Google Docs' suggesting mode works — but for plain Markdown files on your own computer, with an AI reviewer built in. This guide assumes no programming knowledge.
+Quill is **the document editor that can hold a conversation**. It reviews and revises documents the way Google Docs' suggesting mode does — but for plain Markdown files on your own computer, with Claude answering your comments and proposing tracked changes right in the margin. This guide assumes no programming knowledge.
 
 ## Installing Quill
 
@@ -53,6 +53,8 @@ If a document was written with Claude Code's help, you can put that same AI sess
 1. In the bottom bar, click **🔗 Link to Claude session…** and pick the session that the document came from (Quill usually suggests the right one automatically).
 2. Add a comment anywhere and mention **@claude** in it — for example, _"@claude is this paragraph accurate?"_.
 3. Claude's answer streams into the comment thread, with the full memory of having written the document.
+
+**The document doesn't have to come from Claude.** If someone sends you a Markdown file — or you wrote one yourself — you can still have a conversation in it: save the document, click **🔗 Link to Claude session…**, and choose **Start new session**. Quill starts a fresh Claude session just for that document the first time you mention **@claude**, and every comment after that continues the same conversation. (The button is grayed out until the document is saved — the session lives in the document's folder.)
 
 You can also ask Claude to **make edits**: _"@claude tighten this section."_ Its revisions appear as ordinary tracked changes attributed to Claude — you review them with the same Accept / Reject cards as anyone else's suggestions. Nothing changes in your document without your approval.
 

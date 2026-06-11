@@ -1,6 +1,6 @@
 # Quill Integration (Claude Code plugin)
 
-Open Markdown documents in the [Quill](https://github.com/sam-powers/quill) desktop editor — with track-changes, inline comments, and `@claude` replies — directly from a Claude Code session.
+Open Markdown documents in [Quill](https://github.com/sam-powers/quill) — the document editor that can hold a conversation — directly from a Claude Code session, with track-changes, inline comments, and `@claude` replies.
 
 ## What it does
 
