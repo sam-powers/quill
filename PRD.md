@@ -101,6 +101,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 
 - Tauri 2 desktop app (native window, file dialogs, deep-link handling, Claude Code process integration) with a React/TypeScript frontend.
 - Backend exposes a narrow surface: file read/write/delete, open/save/folder dialogs, reference-folder manifest listing, Claude session commands (find session for a doc, check compaction, spawn/cancel a reply — resuming the session, or creating it under the binding's id on first contact for Quill-minted bindings — handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
+- **Update notification (not auto-update):** production builds check GitHub's latest published release once on launch (`useUpdateCheck`, gated to `import.meta.env.PROD` so dev/e2e never hit the network) and, if it is newer than the running version, show a slim dismissible banner under the toolbar. "View release" opens the release page in the default browser (opener plugin); the user downloads and installs themselves. Dismissing remembers that version in localStorage; a still-newer release shows again. Failures (offline, rate-limited) are silent. Draft releases are invisible to the check — publishing the GitHub Release is what makes users see it.
 
 ## 6. Explicit non-goals (current build)
 

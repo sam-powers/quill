@@ -423,6 +423,49 @@ body,
   font-weight: 600;
 }
 
+/* ── Update banner ──────────────────────────────────────────────── */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 5px var(--space-lg);
+  background: var(--color-accent-light);
+  border-bottom: 0.5px solid var(--color-border);
+  color: var(--color-accent-dark);
+  font-family: var(--font-sans);
+  font-size: var(--text-ui);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.update-banner-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-accent-dark);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.update-banner-dismiss {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 1;
+  color: inherit;
+  cursor: pointer;
+}
+
+.update-banner-dismiss:hover {
+  background: var(--color-accent-mid);
+}
+
 /* ── Workspace ──────────────────────────────────────────────────── */
 .workspace {
   display: flex;

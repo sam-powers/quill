@@ -46,6 +46,7 @@ State lives entirely in `App.tsx` — no Redux or context. The editor, comments,
 - **`Editor.tsx`** — Wraps Tiptap. Exposes an imperative handle (`getMarkdown()`, `setContent()`) via `forwardRef`. Do not reach past this component to manipulate Tiptap directly.
 - **`hooks/useFileManager.ts`** — All Tauri file I/O. Opens/saves `.md` files and manages the parallel `.comments.json` sidecar. Invoke Tauri commands only from here.
 - **`hooks/useComments.ts`** / **`hooks/useSuggestions.ts`** — CRUD state for comments and track-changes suggestions.
+- **`hooks/useUpdateCheck.ts`** — Once on launch (production builds only — gated on `import.meta.env.PROD`, so dev/e2e never hit the network), fetches GitHub's latest published release and compares it to `__APP_VERSION__` (injected from `package.json` by `vite.config.ts` **and** `vitest.config.ts` — keep both `define`s). A newer version renders `components/UpdateBanner.tsx` (dismissible; dismissal persisted per-version in localStorage; "View release" opens the browser via the opener plugin). This is notify-only, not an auto-updater. The CSP's `connect-src` allowlists `https://api.github.com` for this.
 - **`components/CommentLayer.tsx`** — Absolutely-positioned comment cards with a collision-detection nudge algorithm to prevent overlap.
 
 ### Tiptap Extensions (`src/extensions/`)

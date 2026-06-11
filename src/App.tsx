@@ -8,7 +8,9 @@ import CommentLayer from './components/CommentLayer';
 import AddCommentButton from './components/AddCommentButton';
 import SessionPicker from './components/SessionPicker';
 import AppModal from './components/AppModal';
+import UpdateBanner from './components/UpdateBanner';
 import { useFileManager } from './hooks/useFileManager';
+import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
@@ -59,6 +61,10 @@ export default function App() {
   // to false so JS handles the shortcuts (dev server / e2e); flipped to true
   // once the backend confirms a native menu exists (see effect below).
   const [hasNativeMenu, setHasNativeMenu] = useState(false);
+
+  // Newer published release, if any (production builds check GitHub once on
+  // launch). The banner links out; the user installs when they choose.
+  const updateCheck = useUpdateCheck({ currentVersion: __APP_VERSION__ });
 
   const [trackedChanges, setTrackedChanges] = useState<TrackedChangeInfo[]>([]);
   const [aiSession, setAISession] = useState<AISessionBinding | null>(null);
@@ -725,6 +731,14 @@ export default function App() {
         onRejectAll={handleRejectAll}
         hasPendingChanges={trackedChanges.some((c) => c.status === 'pending')}
       />
+
+      {updateCheck.update && (
+        <UpdateBanner
+          version={updateCheck.update.version}
+          url={updateCheck.update.url}
+          onDismiss={updateCheck.dismiss}
+        />
+      )}
 
       <div className="workspace" ref={scrollAreaRef}>
         <div className="editor-scroll-area">
