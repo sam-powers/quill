@@ -602,6 +602,14 @@ mark.comment-resolved {
   text-decoration: underline dotted var(--color-ink-light);
 }
 
+/* Provisional highlight while the comment composer is open (a decoration,
+   not a mark) — same family as the comment highlight, visibly unshipped. */
+.ProseMirror .pending-comment {
+  background: color-mix(in srgb, var(--color-highlight-bg) 60%, transparent);
+  border-bottom: 1.5px dashed var(--color-highlight-border);
+  padding: 1px 0;
+}
+
 /* ── Track changes ──────────────────────────────────────────────── */
 ins.track-insert {
   background: var(--color-track-add-bg);

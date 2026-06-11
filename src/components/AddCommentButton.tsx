@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface AddCommentButtonProps {
   top: number;
@@ -6,6 +6,7 @@ interface AddCommentButtonProps {
   visible: boolean;
   author: string;
   onAdd: (text: string) => void;
+  onComposingChange?: (composing: boolean) => void;
 }
 
 export default function AddCommentButton({
@@ -14,10 +15,22 @@ export default function AddCommentButton({
   visible,
   author,
   onAdd,
+  onComposingChange,
 }: AddCommentButtonProps) {
   const [composing, setComposing] = useState(false);
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Tell the parent when the composer opens/closes so it can keep the target
+  // range highlighted in the editor (the native selection highlight dies when
+  // the textarea takes focus). Ref'd so the effect doesn't re-fire on parent
+  // re-renders; the unmount cleanup covers dismissal by selection collapse.
+  const onComposingChangeRef = useRef(onComposingChange);
+  onComposingChangeRef.current = onComposingChange;
+  useEffect(() => {
+    onComposingChangeRef.current?.(composing);
+  }, [composing]);
+  useEffect(() => () => onComposingChangeRef.current?.(false), []);
 
   if (!visible) return null;
 
