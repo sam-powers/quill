@@ -52,7 +52,6 @@ export default function App() {
   );
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const commentLayerRef = useRef<HTMLDivElement>(null);
-  const zoomWrapperRef = useRef<HTMLDivElement>(null);
   const [editorKey] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [, setScrollTick] = useState(0);
@@ -203,6 +202,15 @@ export default function App() {
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
+
+  // Re-render once after a zoom change so the add-comment button re-reads
+  // coordsAtPos: the render that applies the new zoom still measures the old
+  // layout (the style lands in the DOM after render), so without this the
+  // button sits one zoom level behind.
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setScrollTick((t) => t + 1));
+    return () => cancelAnimationFrame(raf);
+  }, [zoom]);
 
   // Update macOS title bar dirty indicator
   useEffect(() => {
@@ -742,7 +750,7 @@ export default function App() {
 
       <div className="workspace" ref={scrollAreaRef}>
         <div className="editor-scroll-area">
-          <div className="editor-page-zoom-wrapper" ref={zoomWrapperRef} style={{ zoom }}>
+          <div className="editor-page-zoom-wrapper" style={{ zoom }}>
             <QuillEditor
               key={editorKey}
               ref={editorRef}
@@ -761,12 +769,11 @@ export default function App() {
           (() => {
             const commentLayer = commentLayerRef.current;
             const commentLayerRect = commentLayer?.getBoundingClientRect();
-            // Fixed positioning: use viewport coordinates directly, no zoom math needed
-            const rawTop = editor
+            // Fixed positioning: coordsAtPos already returns viewport coordinates
+            // scaled by CSS zoom, so they're used as-is — no zoom math.
+            const top = editor
               ? editor.view.coordsAtPos(selectionInfo.from).top
               : selectionInfo.top;
-            const wrapperRect = zoomWrapperRef.current?.getBoundingClientRect();
-            const top = wrapperRect ? wrapperRect.top + (rawTop - wrapperRect.top) / zoom : rawTop;
             const left = commentLayerRect ? commentLayerRect.left - 36 : undefined;
             return (
               <AddCommentButton
@@ -788,6 +795,7 @@ export default function App() {
           containerRef={commentLayerRef}
           trackedChanges={trackedChanges}
           scrollTop={scrollTop}
+          zoom={zoom}
           onReply={(id, text) => addReply(id, text, AUTHOR)}
           onAIReplyRequest={handleAIReplyRequest}
           onCancelAIReply={claudeReply.cancel}

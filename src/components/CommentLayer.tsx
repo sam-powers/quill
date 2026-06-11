@@ -13,6 +13,7 @@ interface CommentLayerProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   trackedChanges: TrackedChangeInfo[];
   scrollTop: number;
+  zoom: number;
   onReply: (commentId: string, text: string) => void;
   onAIReplyRequest: (commentId: string, userText: string) => void;
   onCancelAIReply: (replyId: string) => void;
@@ -123,6 +124,7 @@ export default function CommentLayer({
   containerRef,
   trackedChanges,
   scrollTop,
+  zoom,
   onReply,
   onAIReplyRequest,
   onCancelAIReply,
@@ -246,10 +248,12 @@ export default function CommentLayer({
     };
   }, [editor, reflow]);
 
+  // `zoom` is a dependency because the anchors' viewport rects scale with CSS
+  // zoom — without it, cards keep stale positions until the next edit.
   useEffect(() => {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(reflow);
-  }, [comments, trackedChanges, showResolved, reflow]);
+  }, [comments, trackedChanges, showResolved, zoom, reflow]);
 
   return (
     <div className="comment-layer" ref={containerRef as React.RefObject<HTMLDivElement>}>

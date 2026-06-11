@@ -32,10 +32,10 @@
   --color-human-avatar-bg: #ddd8ce;
   --color-human-avatar-text: #6b5e4a;
   --color-track-add-bg: #dde6de; /* accent-light sage wash */
-  --color-track-add-text: #3a5c3f;
+  --color-track-add-text: #2e4a32;
   --color-track-add-line: #5c7a62;
   --color-track-del-bg: #e6d8d2; /* muted clay against sage */
-  --color-track-del-text: #6b4a3f;
+  --color-track-del-text: #573b32;
   --color-track-del-line: #8e6857;
   --color-highlight-bg: #eae8c8;
   --color-highlight-border: #b0ac6a;
@@ -62,10 +62,10 @@
   --color-human-avatar-bg: #ddd0bb;
   --color-human-avatar-text: #6b5239;
   --color-track-add-bg: #dce3e0; /* Dragonfly wash */
-  --color-track-add-text: #4a615e;
+  --color-track-add-text: #3a4d4a;
   --color-track-add-line: #6b8682;
   --color-track-del-bg: #e8d6ce; /* Terra Cotta wash */
-  --color-track-del-text: #6e4232;
+  --color-track-del-text: #5a3628;
   --color-track-del-line: #9c5e4a;
   --color-highlight-bg: #e8dec0; /* Wheat Bread */
   --color-highlight-border: #b59e66;
@@ -92,10 +92,10 @@
   --color-human-avatar-bg: #d7cfcc;
   --color-human-avatar-text: #5a4244;
   --color-track-add-bg: #dce4ec; /* Adirondack wash */
-  --color-track-add-text: #2f4a60;
+  --color-track-add-text: #273d51;
   --color-track-add-line: #4f6b82;
   --color-track-del-bg: #e8d6d9; /* Rumors wash */
-  --color-track-del-text: #5c2a33;
+  --color-track-del-text: #4d232b;
   --color-track-del-line: #8b4453;
   --color-highlight-bg: #ecddb4; /* Beehive */
   --color-highlight-border: #b89344;
@@ -122,10 +122,10 @@
   --color-human-avatar-bg: #d6b89a;
   --color-human-avatar-text: #4a2f1e;
   --color-track-add-bg: #dde2cf; /* Ecological wash */
-  --color-track-add-text: #56603f;
+  --color-track-add-text: #445030;
   --color-track-add-line: #7a8466;
   --color-track-del-bg: #e8d2c5; /* Iced Copper wash */
-  --color-track-del-text: #6e3f2a;
+  --color-track-del-text: #5a3322;
   --color-track-del-line: #a06a4a;
   --color-highlight-bg: #ead49a; /* Beehive */
   --color-highlight-border: #b89344;
@@ -657,7 +657,9 @@ mark.comment-resolved {
    driven by the active card). Layered over the comment yellow and the
    track-changes ins/del backgrounds, so it must read on top of all three. */
 .ProseMirror .annotation-focus {
-  background: color-mix(in srgb, var(--color-highlight-border) 35%, transparent);
+  /* 25% keeps tracked-change text ≥ 4.5:1 (AA) under the overlay; 35% pushed
+     the warm/earth insert text below it. */
+  background: color-mix(in srgb, var(--color-highlight-border) 25%, transparent);
   border-radius: 2px;
 }
 
@@ -791,15 +793,15 @@ del.track-delete {
 
 .comment-time {
   font-size: var(--text-label);
-  font-weight: 300;
-  color: var(--color-ink-light);
+  font-weight: 400;
+  color: var(--color-ink-mid);
   margin-left: auto;
 }
 
 .comment-anchor-text {
   font-size: var(--text-ui);
-  font-weight: 300;
-  color: var(--color-ink-light);
+  font-weight: 400;
+  color: var(--color-ink-mid);
   font-style: italic;
   padding: 0 12px;
   padding-top: 6px;
@@ -810,9 +812,9 @@ del.track-delete {
 
 .comment-reply-text {
   font-size: var(--text-ui);
-  font-weight: 300;
+  font-weight: 400;
   line-height: var(--leading-ui);
-  color: var(--color-ink-mid);
+  color: var(--color-ink);
   padding: 8px 12px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -842,12 +844,12 @@ del.track-delete {
   border: none;
   cursor: pointer;
   font-size: var(--text-ui);
-  color: var(--color-ink-light);
+  color: var(--color-ink-mid);
   padding: 0 3px;
   line-height: 1;
   border-radius: var(--radius-sm);
   flex-shrink: 0;
-  font-weight: 300;
+  font-weight: 400;
 }
 .comment-resolve-btn:hover {
   color: var(--color-accent);
@@ -863,8 +865,8 @@ del.track-delete {
   display: block;
   margin: 0 12px 8px;
   font-size: var(--text-ui);
-  font-weight: 300;
-  color: var(--color-ink-light);
+  font-weight: 400;
+  color: var(--color-ink-mid);
   background: none;
   border: none;
   cursor: pointer;
@@ -886,8 +888,8 @@ del.track-delete {
   background: transparent;
   font-family: var(--font-sans);
   font-size: var(--text-ui);
-  font-weight: 300;
-  color: var(--color-ink-mid);
+  font-weight: 400;
+  color: var(--color-ink);
   padding: 10px 12px;
   resize: none;
   outline: none;
@@ -942,8 +944,8 @@ del.track-delete {
   align-items: center;
   gap: 7px;
   font-size: var(--text-meta);
-  font-weight: 300;
-  color: var(--color-ink-light);
+  font-weight: 400;
+  color: var(--color-ink-mid);
 }
 
 /* ── Shared button styles ───────────────────────────────────────── */
@@ -968,7 +970,7 @@ del.track-delete {
 
 .btn-ghost {
   font-size: var(--text-meta);
-  font-weight: 300;
+  font-weight: 400;
   padding: 4px 10px;
   border-radius: var(--radius-md);
   border: 0.5px solid var(--color-border);

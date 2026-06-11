@@ -1209,6 +1209,77 @@ test('Cmd+0 resets zoom to 100%', async ({ page }) => {
   await expect(page.locator('.footer-zoom-label')).toContainText('100%');
 });
 
+test('add-comment button stays aligned with the selection across zoom levels', async ({ page }) => {
+  const { editor } = await setup(page);
+  // Enough paragraphs that the selection sits well below the page top —
+  // that's where the old inverse-zoom math drifted the most.
+  for (let i = 0; i < 12; i++) {
+    await editor.type(`Paragraph number ${i} with some filler text.`);
+    await page.keyboard.press('Enter');
+  }
+  await selectLastNChars(page, 6);
+
+  const btn = page.locator('.add-comment-btn');
+  await expect(btn).toBeVisible();
+
+  const deltaAt = async () => {
+    const selTop = await page.evaluate(
+      () => window.getSelection()!.getRangeAt(0).getBoundingClientRect().top,
+    );
+    const btnTop = (await btn.boundingBox())!.y;
+    return btnTop - selTop;
+  };
+
+  const deltaBefore = await deltaAt();
+  // Zoom to 160% (4 × 15% steps).
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.down('ControlOrMeta');
+    await page.keyboard.press('=');
+    await page.keyboard.up('ControlOrMeta');
+  }
+  await page.waitForTimeout(200);
+  await expect(page.locator('.footer-zoom-label')).not.toContainText('100%');
+
+  // The button should track the (zoom-scaled) selection: the gap between the
+  // two must not grow with zoom. The buggy math drifted it by ~40+ px.
+  const deltaAfter = await deltaAt();
+  expect(Math.abs(deltaAfter - deltaBefore)).toBeLessThan(5);
+});
+
+test('comment card realigns with its anchor when zoom changes', async ({ page }) => {
+  const { editor } = await setup(page);
+  for (let i = 0; i < 12; i++) {
+    await editor.type(`Paragraph number ${i} with some filler text.`);
+    await page.keyboard.press('Enter');
+  }
+  await selectLastNChars(page, 6);
+  await addCommentViaPlusButton(page, 'zoom alignment check');
+
+  const mark = page.locator('mark.comment-mark');
+  const card = page.locator('.comment-card');
+  await expect(card).toBeVisible();
+
+  const deltaAt = async () => {
+    const markTop = (await mark.boundingBox())!.y;
+    const cardTop = (await card.boundingBox())!.y;
+    return cardTop - markTop;
+  };
+
+  const deltaBefore = await deltaAt();
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.down('ControlOrMeta');
+    await page.keyboard.press('=');
+    await page.keyboard.up('ControlOrMeta');
+  }
+  // Reflow happens in a rAF after the zoom re-render.
+  await page.waitForTimeout(300);
+
+  // Without zoom in the reflow deps the card kept its stale 100% position
+  // while the anchor scaled away from it.
+  const deltaAfter = await deltaAt();
+  expect(Math.abs(deltaAfter - deltaBefore)).toBeLessThan(20);
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // SECTION 16 — Cross-feature interactions
 // ────────────────────────────────────────────────────────────────────────────
