@@ -53,6 +53,7 @@ State lives entirely in `App.tsx` — no Redux or context. The editor, comments,
 - **`TrackChanges.ts`** — ProseMirror plugin that intercepts document transactions in suggesting mode and wraps changes with `tracked_insert` / `tracked_delete` marks.
 - **`Comment.ts`** — Tiptap mark extension for anchoring comment highlights to text ranges.
 - **`PendingComment.ts`** — Decoration (not a mark — never touches the document) that keeps the to-be-commented range highlighted while the comment composer is open. Driven by `setPendingCommentRange` / `clearPendingCommentRange`, wired to the composer lifecycle via `AddCommentButton`'s `onComposingChange`.
+- **`AnnotationFocus.ts`** — Decoration (never touches the document) that intensifies the in-text highlight of the active annotation (comment or suggestion). Driven by `setAnnotationFocus` / `clearAnnotationFocus`, mirrored from App's `activeAnnotation` state; also exports `findAnnotationRange` for live mark ranges. Clicks on annotated text are hit-tested in `Editor.tsx`'s `handleClick` (DOM-walk for `data-comment-id` / `data-change-id`) and reported to App, which focuses the innermost candidate.
 
 ### Persistence Model
 

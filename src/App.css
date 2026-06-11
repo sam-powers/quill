@@ -610,6 +610,14 @@ mark.comment-resolved {
   padding: 1px 0;
 }
 
+/* Intensified highlight on the focused annotation's text (a decoration,
+   driven by the active card). Layered over the comment yellow and the
+   track-changes ins/del backgrounds, so it must read on top of all three. */
+.ProseMirror .annotation-focus {
+  background: color-mix(in srgb, var(--color-highlight-border) 35%, transparent);
+  border-radius: 2px;
+}
+
 /* ── Track changes ──────────────────────────────────────────────── */
 ins.track-insert {
   background: var(--color-track-add-bg);
@@ -1023,6 +1031,9 @@ del.track-delete {
 }
 .suggestion-card:hover {
   border-color: var(--color-accent-mid);
+}
+.suggestion-card-active {
+  border-color: var(--color-accent-mid) !important;
 }
 .suggestion-card-insert .comment-thread-line {
   background: var(--color-track-add-line);
