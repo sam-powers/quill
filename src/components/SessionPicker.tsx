@@ -20,6 +20,12 @@ interface SessionPickerProps {
   open: boolean;
   onClose: () => void;
   onPick: (binding: AISessionBinding) => void;
+  /**
+   * Directory the "Start new session" binding will run in — the open
+   * document's folder, or null while the document is unsaved (which disables
+   * the button: the fresh session needs a real cwd to read the doc from).
+   */
+  newSessionCwd: string | null;
 }
 
 function formatRelativeTime(unixSeconds: number): string {
@@ -30,7 +36,12 @@ function formatRelativeTime(unixSeconds: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function SessionPicker({ open, onClose, onPick }: SessionPickerProps) {
+export default function SessionPicker({
+  open,
+  onClose,
+  onPick,
+  newSessionCwd,
+}: SessionPickerProps) {
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -72,6 +83,19 @@ export default function SessionPicker({ open, onClose, onPick }: SessionPickerPr
       sessionId: preview.sessionId || selectedSummary.sessionId,
       cwd: preview.cwd || selectedSummary.cwd,
       linkedAt: new Date().toISOString(),
+    });
+  }
+
+  // Mint a binding to a session that doesn't exist yet; it is created in the
+  // document's folder on the first @claude request (allowCreate spawn path).
+  function handleStartNew() {
+    if (!newSessionCwd) return;
+    onPick({
+      provider: 'claude-code',
+      sessionId: crypto.randomUUID(),
+      cwd: newSessionCwd,
+      linkedAt: new Date().toISOString(),
+      createdByQuill: true,
     });
   }
 
@@ -140,6 +164,18 @@ export default function SessionPicker({ open, onClose, onPick }: SessionPickerPr
         </div>
 
         <div className="session-picker-footer">
+          <button
+            className="btn-ghost session-picker-new"
+            onClick={handleStartNew}
+            disabled={!newSessionCwd}
+            title={
+              newSessionCwd
+                ? `Bind a fresh Claude session running in ${newSessionCwd} — for docs no session wrote, like one someone sent you`
+                : 'Save the document first — the new session runs in the document’s folder'
+            }
+          >
+            Start new session
+          </button>
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>

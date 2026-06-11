@@ -651,23 +651,18 @@ fn find_session_for_markdown(content: String) -> Result<Option<AutoBindResult>, 
     Ok(matches.into_iter().next())
 }
 
-#[tauri::command]
-fn check_session_compacted(session_id: String) -> Result<CompactionInfo, String> {
-    // Find the jsonl that contains this session id.
+/// Locate the `~/.claude/projects/*/<session_id>.jsonl` for a session, if it
+/// exists on disk yet. `Ok(None)` covers both a missing projects directory and
+/// an unknown session id.
+fn find_session_jsonl(session_id: &str) -> Result<Option<std::path::PathBuf>, String> {
     let dir = claude_projects_dir()?;
     let read = match std::fs::read_dir(&dir) {
         Ok(r) => r,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            return Ok(CompactionInfo {
-                compacted: false,
-                original_markdown: None,
-            });
-        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(e.to_string()),
     };
 
-    let mut target: Option<std::path::PathBuf> = None;
-    'outer: for project_entry in read.flatten() {
+    for project_entry in read.flatten() {
         let session_iter = match std::fs::read_dir(project_entry.path()) {
             Ok(r) => r,
             Err(_) => continue,
@@ -683,13 +678,16 @@ fn check_session_compacted(session_id: String) -> Result<CompactionInfo, String>
                 .map(|s| s == session_id)
                 .unwrap_or(false)
             {
-                target = Some(path);
-                break 'outer;
+                return Ok(Some(path));
             }
         }
     }
+    Ok(None)
+}
 
-    let Some(path) = target else {
+#[tauri::command]
+fn check_session_compacted(session_id: String) -> Result<CompactionInfo, String> {
+    let Some(path) = find_session_jsonl(&session_id)? else {
         return Ok(CompactionInfo {
             compacted: false,
             original_markdown: None,
@@ -1019,17 +1017,27 @@ fn spawn_claude_resume(
     cwd: String,
     prompt: String,
     add_dir: Option<String>,
+    allow_create: Option<bool>,
     on_event: Channel<ChunkEvent>,
 ) -> Result<String, String> {
     let claude_bin = resolve_claude_binary()?;
+    // Bindings created inside Quill ("Start new session") point at a session
+    // that doesn't exist until the first reply: create it under the binding's
+    // id with `--session-id`, then resume it like any other session afterwards.
+    // Without allow_create an unknown session still fails loudly via --resume.
+    let create_new = allow_create.unwrap_or(false) && find_session_jsonl(&session_id)?.is_none();
     let mut cmd = Command::new(&claude_bin);
-    cmd.arg("--resume")
-        .arg(&session_id)
-        .arg("--print")
-        .arg("--output-format")
-        .arg("stream-json")
-        .arg("--include-partial-messages")
-        .arg("--verbose");
+    cmd.arg(if create_new {
+        "--session-id"
+    } else {
+        "--resume"
+    })
+    .arg(&session_id)
+    .arg("--print")
+    .arg("--output-format")
+    .arg("stream-json")
+    .arg("--include-partial-messages")
+    .arg("--verbose");
     // Grant read access to the document's linked context folder so Claude can
     // open the files named in the prompt's manifest.
     if let Some(dir) = add_dir.as_deref().filter(|d| !d.is_empty()) {

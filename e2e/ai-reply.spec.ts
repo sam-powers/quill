@@ -16,57 +16,67 @@ type MockScriptStep =
   | { kind: 'cancelled' }
   | { kind: 'pause' }; // hold open until cancel
 
-async function setupWithMock(page: Page, script: MockScriptStep[]): Promise<void> {
-  await page.addInitScript((steps: MockScriptStep[]) => {
-    type Ev =
-      | { kind: 'delta'; text: string }
-      | { kind: 'done' }
-      | { kind: 'error'; message: string }
-      | { kind: 'cancelled' };
+async function setupWithMock(
+  page: Page,
+  script: MockScriptStep[],
+  sessionOverrides: Record<string, unknown> = {},
+): Promise<void> {
+  await page.addInitScript(
+    ({ steps, overrides }: { steps: MockScriptStep[]; overrides: Record<string, unknown> }) => {
+      type Ev =
+        | { kind: 'delta'; text: string }
+        | { kind: 'done' }
+        | { kind: 'error'; message: string }
+        | { kind: 'cancelled' };
 
-    let nextTokenId = 0;
-    const pending = new Map<string, () => void>(); // token → cancel resolver
+      let nextTokenId = 0;
+      const pending = new Map<string, () => void>(); // token → cancel resolver
 
-    (window as unknown as { __quillTestSession: unknown }).__quillTestSession = {
-      provider: 'claude-code',
-      sessionId: 'test-session-id',
-      cwd: '/tmp/test',
-      generatedAt: '2026-01-01T00:00:00Z',
-    };
+      (window as unknown as { __quillTestSession: unknown }).__quillTestSession = {
+        provider: 'claude-code',
+        sessionId: 'test-session-id',
+        cwd: '/tmp/test',
+        generatedAt: '2026-01-01T00:00:00Z',
+        ...overrides,
+      };
 
-    (window as unknown as { __quillMock: unknown }).__quillMock = {
-      spawn: (_args: unknown, onEvent: (e: Ev) => void) => {
-        const token = `mock-${++nextTokenId}`;
-        let cancelled = false;
-        pending.set(token, () => {
-          cancelled = true;
-          onEvent({ kind: 'cancelled' });
-          pending.delete(token);
-        });
-        (async () => {
-          for (const step of steps) {
-            if (cancelled) return;
-            await new Promise((r) => setTimeout(r, 30));
-            if (cancelled) return;
-            if (step.kind === 'pause') {
-              // Park indefinitely; only cancel will resolve.
-              await new Promise(() => undefined);
-              return;
+      (window as unknown as { __quillMock: unknown }).__quillMock = {
+        spawn: (args: unknown, onEvent: (e: Ev) => void) => {
+          // Exposed so tests can assert on what the app would send the backend.
+          (window as unknown as { __lastSpawnArgs: unknown }).__lastSpawnArgs = args;
+          const token = `mock-${++nextTokenId}`;
+          let cancelled = false;
+          pending.set(token, () => {
+            cancelled = true;
+            onEvent({ kind: 'cancelled' });
+            pending.delete(token);
+          });
+          (async () => {
+            for (const step of steps) {
+              if (cancelled) return;
+              await new Promise((r) => setTimeout(r, 30));
+              if (cancelled) return;
+              if (step.kind === 'pause') {
+                // Park indefinitely; only cancel will resolve.
+                await new Promise(() => undefined);
+                return;
+              }
+              onEvent(step as Ev);
+              if (step.kind === 'done' || step.kind === 'error') {
+                pending.delete(token);
+                return;
+              }
             }
-            onEvent(step as Ev);
-            if (step.kind === 'done' || step.kind === 'error') {
-              pending.delete(token);
-              return;
-            }
-          }
-        })();
-        return token;
-      },
-      cancel: (token: string) => {
-        pending.get(token)?.();
-      },
-    };
-  }, script);
+          })();
+          return token;
+        },
+        cancel: (token: string) => {
+          pending.get(token)?.();
+        },
+      };
+    },
+    { steps: script, overrides: sessionOverrides },
+  );
 
   await page.goto('/');
   const editor = page.locator('.ProseMirror');
@@ -182,6 +192,40 @@ test('AI reply: @claude in a reply with no linked session opens the session pick
   await addCommentWithAIReply(page, 'hello world', '@claude take a look');
 
   await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
+});
+
+test('Session picker: offers "Start new session", disabled until the doc is saved', async ({
+  page,
+}) => {
+  await setupWithoutSession(page);
+  await addCommentTaggingClaude(page, 'hello world', '@claude take a look');
+
+  await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
+  // In the browser the document has no file path yet, so the button renders
+  // but stays disabled — the new session needs the doc's folder as its cwd.
+  const startNew = page.locator('.session-picker-new');
+  await expect(startNew).toBeVisible();
+  await expect(startNew).toBeDisabled();
+});
+
+test('AI reply: a Quill-created binding spawns with allowCreate', async ({ page }) => {
+  await setupWithMock(page, [{ kind: 'delta', text: 'Hi!' }, { kind: 'done' }], {
+    createdByQuill: true,
+  });
+
+  await addCommentTaggingClaude(page, 'hello world', '@claude introduce yourself');
+
+  const aiReply = page.locator('.comment-reply-ai').first();
+  await expect(aiReply.locator('.comment-reply-text')).toContainText('Hi!', { timeout: 3000 });
+
+  const args = await page.evaluate(
+    () => (window as unknown as { __lastSpawnArgs: unknown }).__lastSpawnArgs,
+  );
+  expect(args).toMatchObject({ sessionId: 'test-session-id', allowCreate: true });
+  // A fresh session never authored the doc — the prompt must not claim it did.
+  const prompt = (args as { prompt: string }).prompt;
+  expect(prompt).not.toContain('previously authored');
+  expect(prompt).toContain('Here is the full current document:');
 });
 
 test('AI reply: pending → error shows Re-link button', async ({ page }) => {

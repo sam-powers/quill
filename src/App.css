@@ -1421,6 +1421,13 @@ del.track-delete {
   padding: 10px 16px;
   border-top: 1px solid var(--color-border);
 }
+.session-picker-new {
+  margin-right: auto;
+}
+.session-picker-new:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 /* ── Scrollbar ──────────────────────────────────────────────────── */
 .editor-scroll-area::-webkit-scrollbar {

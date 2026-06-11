@@ -50,13 +50,14 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 - A document can be **linked to a Claude Code session** via the footer ("Link to Claude session…"), choosing from a session picker. Once linked, the footer shows the linked session (`🔗 Claude <id>`) and offers an unlink (×).
 - In a comment thread, the user can request a reply from Claude. The request is sent to the linked session and the **answer streams back inline** as an AI-authored reply in the thread.
 - Tagging `@claude` **before a session is linked** — in a new comment or a reply — opens the session picker, and the request fires automatically once a session is chosen (it is never silently dropped).
+- **Start new session (cold start):** the picker also offers **"Start new session"** for documents no Claude session wrote — e.g. one someone sent you. Quill mints a binding (`createdByQuill: true`) under a fresh UUID; the actual session is created on the **first** `@claude` request (spawned with `--session-id` in the document's folder as its working directory) and resumed like any other session afterwards. The button is disabled until the document is saved, since the session needs the doc's folder. Prompts to such a session never claim Claude authored the document, and it is always sent the **full current document** (the compaction/line-diff machinery only applies to sessions that actually wrote the doc).
 - The prompt Claude receives includes the **highlighted anchor text**, the **comment thread so far**, and document context.
 - **Reference folder:** a document can be linked to a **folder of reference documents** via the footer ("📁 Link reference folder…"). When set, every `@claude` request grants Claude read access to that folder (`--add-dir`) and the prompt carries a `=== REFERENCE FOLDER ===` section with a manifest of the document-like files inside it (markdown, text, data, and office formats; hidden files and dependency directories skipped; capped at 200 entries), so Claude can pull in relevant sources on demand. The binding persists in the sidecar; the footer chip shows the folder name (click to change, × to unlink). A failed manifest scan degrades to no reference section rather than blocking the reply.
 - **Claude can write edits directly into the document as tracked changes.** When the user asks for a revision (e.g. "tighten this", "fix the grammar"), Claude's reply carries a fenced `quill-edits` block of `find` / `replace` edits alongside its prose. Quill locates each `find` string and applies the replacement as a **tracked change attributed to Claude** — so AI revisions land as ordinary Accept / Reject suggestion cards in the margin, reviewed exactly like a human's. The prose explanation still appears in the thread; only the editing instructions are stripped from it.
   - **Scope is inferred from the request:** by default edits are confined to the **highlighted** anchor text; phrasing like "this paragraph" widens the scope to the surrounding **paragraph**, and "the whole document" to the **entire doc**.
   - Edits whose `find` text can no longer be located in the document are skipped rather than misapplied, and the count is reported.
   - Track-changes mode is toggled on only for the duration of applying Claude's edits, then restored to whatever it was — so this works whether or not the user is in Suggesting mode.
-- **Compaction-aware context:** before asking, Quill checks whether the linked session's context was compacted.
+- **Compaction-aware context:** before asking, Quill checks whether the linked session's context was compacted. (Skipped for Quill-created sessions, which never authored the doc and always get the full document.)
   - Context intact → Claude is sent a **line diff** of what it originally wrote vs. the current document.
   - Context compacted → Claude is sent the **full current document** with a note explaining the compaction.
 - AI replies show a **pending** state while streaming and can be **cancelled**; failures surface an error on the reply.
@@ -82,13 +83,13 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 - `Comment` (anchored text range + threaded `Reply[]`, resolved flag).
 - `Reply` (author, text, `authorKind: user | ai`, pending/error state for streaming AI replies).
 - `Suggestion` (status pending / accepted / rejected). The `type` field allows `insertion | deletion | replacement`, but `replacement` is currently unused — the editor tracks changes as `tracked_insert` / `tracked_delete` marks and never emits a distinct replacement.
-- `AISessionBinding` (`provider: claude-code`, session id, cwd, linkedAt).
+- `AISessionBinding` (`provider: claude-code`, session id, cwd, linkedAt, optional `createdByQuill` marking bindings minted by "Start new session" rather than linked to an existing authoring session).
 - `SidecarFile` (version 2: comments + suggestions + optional aiSession + optional contextFolder). The optional fields are backward compatible — older sidecars load unchanged.
 
 ## 5. Platform
 
 - Tauri 2 desktop app (native window, file dialogs, deep-link handling, Claude Code process integration) with a React/TypeScript frontend.
-- Backend exposes a narrow surface: file read/write/delete, open/save/folder dialogs, reference-folder manifest listing, Claude session commands (find session for a doc, check compaction, spawn/cancel a resumed reply, handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
+- Backend exposes a narrow surface: file read/write/delete, open/save/folder dialogs, reference-folder manifest listing, Claude session commands (find session for a doc, check compaction, spawn/cancel a reply — resuming the session, or creating it under the binding's id on first contact for Quill-minted bindings — handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
 
 ## 6. Explicit non-goals (current build)
 

@@ -13,6 +13,13 @@ export interface AISessionBinding {
   sessionId: string;
   cwd: string;
   linkedAt: string;
+  /**
+   * True when Quill minted this binding itself ("Start new session" in the
+   * picker) instead of linking an existing authoring session. The session is
+   * created on first @claude contact, and prompts never claim Claude authored
+   * the document.
+   */
+  createdByQuill?: boolean;
 }
 
 export interface Comment {
