@@ -25,7 +25,8 @@ Each time Quill starts it checks whether a newer version has been released. If t
 
 ## The basics
 
-- **Open** a Markdown (`.md`) file with **File → Open…** (or Cmd/Ctrl+O), **save** with Cmd/Ctrl+S.
+- **Open** a Markdown (`.md`) file with **File → Open…** (or Cmd/Ctrl+O), **save** with Cmd/Ctrl+S. **File → Open Recent** lists your last ten documents.
+- Quill remembers your window size and position between launches, and misspellings get the usual red squiggle from your system spellchecker.
 - The toolbar has the usual formatting: bold, italic, headings, lists, quotes.
 - **Find & replace** with Cmd/Ctrl+F: type to highlight matches, Enter / Shift+Enter to step through them, **Replace** / **All** to swap them out, Esc to close. In Suggesting mode a replacement shows up as a tracked change like any other edit.
 - **Links** with Cmd/Ctrl+K (or the chain-link toolbar button): select text and enter a URL — bare domains like `example.com` get `https://` added for you. Click inside an existing link and press Cmd/Ctrl+K again to change or remove it.

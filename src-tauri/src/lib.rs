@@ -191,6 +191,20 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    // --- recent menu labels ---
+
+    #[test]
+    fn recent_menu_label_uses_file_name() {
+        assert_eq!(recent_menu_label("/Users/sam/docs/notes.md"), "notes.md");
+        assert_eq!(recent_menu_label("plain.md"), "plain.md");
+    }
+
+    #[test]
+    fn recent_menu_label_falls_back_to_path() {
+        assert_eq!(recent_menu_label("/"), "/");
+        assert_eq!(recent_menu_label(""), "");
+    }
+
     // --- draft persistence ---
 
     #[test]
@@ -1283,13 +1297,36 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             app.manage(ChildRegistry::default());
             app.manage(PendingDeepLink::default());
 
-            build_menu(app.handle())?;
+            build_menu(app.handle(), &[])?;
 
             use tauri::Emitter;
+
+            // Registered once here (not in build_menu): `update_recent_menu`
+            // rebuilds the menu at runtime, and re-registering the handler on
+            // every rebuild would stack listeners.
+            app.on_menu_event(move |app, event| {
+                // The menu item id is exactly the event name the frontend
+                // listens for; Open Recent ids carry the path after "recent:".
+                let id = event.id().as_ref();
+                if let Some(path) = id.strip_prefix("recent:") {
+                    let _ = app.emit("menu-open-recent", path.to_string());
+                } else if matches!(
+                    id,
+                    "menu-new"
+                        | "menu-open"
+                        | "menu-save"
+                        | "menu-save-as"
+                        | "menu-quit"
+                        | "menu-clear-recent"
+                ) {
+                    let _ = app.emit(id, ());
+                }
+            });
             use tauri_plugin_deep_link::DeepLinkExt;
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
@@ -1326,18 +1363,30 @@ pub fn run() {
             handle_deep_link,
             take_pending_deep_link,
             has_native_menu,
+            update_recent_menu,
             exit_app,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
+/// Label for an Open Recent entry: the file name, falling back to the full
+/// path when there is no final component.
+fn recent_menu_label(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
+}
+
 /// Build the native application menu and route File-menu clicks to frontend
 /// events. The menu mirrors the existing keyboard shortcuts (Cmd/Ctrl+N/O/S,
 /// Cmd/Ctrl+Shift+S) so file operations are reachable without knowing them.
-fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+/// `recent` fills File → Open Recent; the frontend re-invokes
+/// `update_recent_menu` (which calls back into here) whenever its list
+/// changes, so the whole menu is rebuilt each time.
+fn build_menu(app: &tauri::AppHandle, recent: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-    use tauri::Emitter;
 
     // Quit is a custom item (not PredefinedMenuItem::quit) so Cmd+Q routes
     // through the frontend's unsaved-changes guard; the frontend calls
@@ -1354,6 +1403,34 @@ fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         Some("CmdOrCtrl+Shift+S"),
     )?;
 
+    // Open Recent: one item per remembered path (id carries the full path so
+    // the click handler can forward it), then Clear Menu — disabled when there
+    // is nothing to clear, matching the macOS convention.
+    let mut recent_items: Vec<Box<dyn tauri::menu::IsMenuItem<tauri::Wry>>> = Vec::new();
+    for path in recent {
+        recent_items.push(Box::new(MenuItem::with_id(
+            app,
+            format!("recent:{path}"),
+            recent_menu_label(path),
+            true,
+            None::<&str>,
+        )?));
+    }
+    if !recent.is_empty() {
+        recent_items.push(Box::new(PredefinedMenuItem::separator(app)?));
+    }
+    let clear_recent_item = MenuItem::with_id(
+        app,
+        "menu-clear-recent",
+        "Clear Menu",
+        !recent.is_empty(),
+        None::<&str>,
+    )?;
+    recent_items.push(Box::new(clear_recent_item));
+    let recent_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> =
+        recent_items.iter().map(|i| i.as_ref()).collect();
+    let open_recent_menu = Submenu::with_items(app, "Open Recent", true, &recent_refs)?;
+
     let file_menu = Submenu::with_items(
         app,
         "File",
@@ -1361,6 +1438,7 @@ fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
         &[
             &new_item,
             &open_item,
+            &open_recent_menu,
             &PredefinedMenuItem::separator(app)?,
             &save_item,
             &save_as_item,
@@ -1398,18 +1476,15 @@ fn build_menu(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu])?;
     app.set_menu(menu)?;
 
-    app.on_menu_event(move |app, event| {
-        // The menu item id is exactly the event name the frontend listens for.
-        let id = event.id().as_ref();
-        if matches!(
-            id,
-            "menu-new" | "menu-open" | "menu-save" | "menu-save-as" | "menu-quit"
-        ) {
-            let _ = app.emit(id, ());
-        }
-    });
-
     Ok(())
+}
+
+/// Rebuild the menu with the given Open Recent paths (most recent first).
+/// The frontend owns the list (persisted in localStorage) and calls this on
+/// launch and whenever the list changes.
+#[tauri::command]
+fn update_recent_menu(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), String> {
+    build_menu(&app, &paths).map_err(|e| e.to_string())
 }
 
 fn parse_quill_open(url: &str) -> Option<String> {

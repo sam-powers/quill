@@ -1382,3 +1382,8 @@ test('Enter in suggesting mode does not insert an empty paragraph between lines'
   // Two lines typed → exactly two paragraphs (no empty middle paragraph).
   expect(await editor.locator('p').count()).toBe(2);
 });
+
+test('editor opts into spellcheck explicitly', async ({ page }) => {
+  const { editor } = await setup(page);
+  await expect(editor).toHaveAttribute('spellcheck', 'true');
+});

@@ -98,6 +98,9 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
       ],
       content: initialContent,
       editorProps: {
+        // Explicit opt-in: WKWebView doesn't reliably spellcheck a
+        // contenteditable without the attribute spelled out.
+        attributes: { spellcheck: 'true' },
         // Chromium in headless mode (and some platforms) doesn't reliably map
         // Home/End to ProseMirror line navigation. Handle them explicitly so
         // pressing End collapses a selection to the line end.
