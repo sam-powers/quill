@@ -1,10 +1,11 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
+import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
+import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { TextSelection } from '@tiptap/pm/state';
 import { Markdown } from 'tiptap-markdown';
+import { MarkdownImage } from '../extensions/MarkdownImage';
 import { CommentMark } from '../extensions/Comment';
 import { PendingComment } from '../extensions/PendingComment';
 import { AnnotationFocus } from '../extensions/AnnotationFocus';
@@ -74,9 +75,17 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
           // Don't auto-insert an empty paragraph after non-paragraph blocks
           // (e.g. headings). It interferes with toggling H1 back to paragraph.
           trailingNode: false,
+          // StarterKit bundles Link (and Underline) in Tiptap v3 — configure
+          // here rather than registering a duplicate extension.
+          link: { openOnClick: false },
         }),
-        Underline,
-        Link.configure({ openOnClick: false }),
+        MarkdownImage,
+        Table,
+        TableRow,
+        TableCell,
+        TableHeader,
+        TaskList,
+        TaskItem.configure({ nested: true }),
         Markdown.configure({ html: false, tightLists: true }),
         CommentMark,
         PendingComment,

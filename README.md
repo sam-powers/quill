@@ -35,7 +35,7 @@ Releases are **macOS-only** for now — the `@claude` integration locates the Cl
 
 ## Features
 
-- **WYSIWYG Markdown editing** built on Tiptap/ProseMirror, with a formatting toolbar (bold, italic, underline, strikethrough, headings, lists, blockquote, inline code) and undo/redo.
+- **WYSIWYG Markdown editing** built on Tiptap/ProseMirror, with a formatting toolbar (bold, italic, underline, strikethrough, headings, lists, blockquote, inline code) and undo/redo. Images, tables, and task lists render in place and **round-trip through save unchanged** — and Quill warns up front when a file contains something it can't preserve (footnotes, raw HTML) so nothing is mangled silently.
 - **Suggesting mode** — a Google-Docs-style toggle that tracks edits as insertions and deletions instead of applying them directly. Each pending change gets a margin card with per-change **Accept** / **Reject**, plus **Accept All** / **Reject All**.
 - **Inline comments** — anchor a threaded comment to a text range; reply, resolve, and delete. Comment cards live in the right margin with collision-avoidance so they never overlap.
 - **`@claude` replies** — link a document to its authoring Claude Code session — or start a fresh session for a doc no session wrote — and ask questions in a comment thread. Answers stream back inline. Quill sends a line diff of what changed (or the full document, if the session's context was compacted or the session is new).

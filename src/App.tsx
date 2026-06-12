@@ -15,6 +15,8 @@ import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
 import { getTrackedChanges } from './extensions/TrackChanges';
+import { setImageBaseDir } from './extensions/MarkdownImage';
+import { detectLossyConstructs } from './utils/markdownFidelity';
 import { findAnnotationRange } from './extensions/AnnotationFocus';
 import type { AnnotationKind } from './extensions/AnnotationFocus';
 import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
@@ -225,6 +227,9 @@ export default function App() {
       filePath: string;
       sidecarError?: string | null;
     }) => {
+      // Must precede setContent: ProseMirror draws the document (and thus
+      // resolves image srcs) synchronously when content is set.
+      setImageBaseDir(dirname(result.filePath));
       editorRef.current?.setContent(result.content);
       setComments(result.sidecar.comments ?? []);
       setSuggestions(result.sidecar.suggestions ?? []);
@@ -240,6 +245,18 @@ export default function App() {
             `Your comments and suggestions are NOT loaded, but the file on disk is preserved. ` +
             `Saving will not overwrite it. Fix or remove the file, then reopen.`,
         });
+      } else {
+        // Warn before the user edits, not after they've saved over the file.
+        const lossy = detectLossyConstructs(result.content);
+        if (lossy.length > 0) {
+          setNotice({
+            title: 'Some formatting may not survive',
+            message:
+              `This file contains ${lossy.join(' and ')}, which Quill cannot edit yet. ` +
+              `Those parts will be altered if you save this document from Quill. ` +
+              `To keep them intact, edit this file in another tool.`,
+          });
+        }
       }
       setAISession(session);
       setContextFolder(result.sidecar.contextFolder ?? null);
@@ -301,7 +318,11 @@ export default function App() {
   }
 
   const handleSaveAs = useCallback(async () => {
-    return saveFileAs(getMarkdown(), comments, suggestions, aiSession, contextFolder);
+    const path = await saveFileAs(getMarkdown(), comments, suggestions, aiSession, contextFolder);
+    // The document gained (or moved) a directory — relative image paths now
+    // resolve against it for anything drawn from here on.
+    if (path) setImageBaseDir(dirname(path));
+    return path;
   }, [saveFileAs, comments, suggestions, aiSession, contextFolder]);
 
   const handleSave = useCallback(async () => {
@@ -319,6 +340,7 @@ export default function App() {
 
   const performNew = useCallback(() => {
     newFile();
+    setImageBaseDir(null);
     editorRef.current?.setContent('');
     setComments([]);
     setSuggestions([]);

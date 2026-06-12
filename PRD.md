@@ -1,7 +1,7 @@
 # Quill — Product Requirements (as-built)
 
 **Status:** Reflects what is implemented and shipping today, single-player.
-**Last updated:** 2026-05-23
+**Last updated:** 2026-06-11
 **Out of scope (deprioritized):** real-time multiplayer, Google Sign-In, and cloud document sharing. That work lives unmerged on `claude/google-signin-multiplayer-ecT9T` and is intentionally excluded here.
 
 ---
@@ -21,6 +21,8 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 ### 3.1 Writing surface
 
 - Rich-text editing of Markdown via a WYSIWYG editor (Tiptap/ProseMirror).
+- **Markdown round-trip fidelity:** the constructs a document can contain survive open → save unchanged. Beyond the basics (headings, emphasis, links, lists, blockquotes, code, horizontal rules), the editor renders and round-trips **images** (block and inline; relative paths like `![](./pic.png)` are displayed by resolving against the document's folder while the saved Markdown keeps the original path), **tables** (including formatted cells), and **task lists** (nested, with checkboxes). Verified by an assertion-based round-trip test suite.
+- **Lossy-construct warning:** constructs the editor cannot represent — **footnotes** and **raw HTML** (tags or comments, outside code blocks/spans) — trigger a one-time dialog when such a file is opened, warning that those parts will be altered if the document is saved from Quill, before the user has edited anything.
 - Formatting toolbar: **italic, bold, underline, strikethrough**, **undo/redo**, **H1/H2/H3**, **bullet list, numbered list, blockquote, inline code**.
 - Toolbar actions preserve the active text selection (a known editor pitfall, handled deliberately).
 - Document zoom from **60% to 240%** via toolbar shortcuts (Cmd +/−/0) and a footer slider (double-click the % to reset to 100%).
@@ -100,6 +102,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 ## 5. Platform
 
 - Tauri 2 desktop app (native window, file dialogs, deep-link handling, Claude Code process integration) with a React/TypeScript frontend.
+- **Local images** are served through Tauri's asset protocol (scoped to the user's home directory); remote `https:` images are allowed by the CSP.
 - Backend exposes a narrow surface: file read/write/delete, open/save/folder dialogs, reference-folder manifest listing, Claude session commands (find session for a doc, check compaction, spawn/cancel a reply — resuming the session, or creating it under the binding's id on first contact for Quill-minted bindings — handle deep links), and app exit (the Quit menu item emits an event so the frontend's unsaved-changes guard runs before `exit_app`).
 - **Update notification (not auto-update):** production builds check GitHub's latest published release once on launch (`useUpdateCheck`, gated to `import.meta.env.PROD` so dev/e2e never hit the network) and, if it is newer than the running version, show a slim dismissible banner under the toolbar. "View release" opens the release page in the default browser (opener plugin); the user downloads and installs themselves. Dismissing remembers that version in localStorage; a still-newer release shows again. Failures (offline, rate-limited) are silent. Draft releases are invisible to the check — publishing the GitHub Release is what makes users see it.
 
