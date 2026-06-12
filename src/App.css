@@ -474,6 +474,82 @@ body,
   position: relative;
 }
 
+/* ── Find & replace bar ─────────────────────────────────────────── */
+.find-bar {
+  position: absolute;
+  top: var(--space-sm);
+  right: calc(var(--comment-panel-width) + var(--space-lg));
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--color-page);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-family: var(--font-sans);
+}
+
+.find-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.find-bar-input {
+  width: 180px;
+  padding: 4px 8px;
+  border: 0.5px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-ui);
+}
+
+.find-bar-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.find-bar-count {
+  min-width: 64px;
+  text-align: right;
+  color: var(--color-ink-light);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.find-bar-btn {
+  border: none;
+  background: transparent;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-mid);
+  font-size: var(--text-ui);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.find-bar-btn:hover:not(:disabled) {
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+}
+
+.find-bar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.find-bar-btn-text {
+  width: auto;
+  padding: 0 8px;
+  font-size: var(--text-meta);
+}
+
 /* ── Editor scroll area ─────────────────────────────────────────── */
 .editor-scroll-area {
   flex: 1;
@@ -716,6 +792,18 @@ mark.comment-resolved {
   background: color-mix(in srgb, var(--color-highlight-bg) 60%, transparent);
   border-bottom: 1.5px dashed var(--color-highlight-border);
   padding: 1px 0;
+}
+
+/* Find matches (decorations — the document is never touched by search).
+   Same warm family as the comment highlight; the active match gets the
+   stronger border-color wash so it reads over comment/track backgrounds. */
+.ProseMirror .find-match {
+  background: color-mix(in srgb, var(--color-highlight-border) 30%, transparent);
+  border-radius: 2px;
+}
+.ProseMirror .find-match-active {
+  background: color-mix(in srgb, var(--color-highlight-border) 65%, transparent);
+  outline: 1px solid var(--color-highlight-border);
 }
 
 /* Intensified highlight on the focused annotation's text (a decoration,

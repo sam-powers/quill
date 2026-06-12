@@ -6,6 +6,7 @@ import { TaskList, TaskItem } from '@tiptap/extension-list';
 import { TextSelection } from '@tiptap/pm/state';
 import { Markdown } from 'tiptap-markdown';
 import { MarkdownImage } from '../extensions/MarkdownImage';
+import { Find } from '../extensions/Find';
 import { CommentMark } from '../extensions/Comment';
 import { PendingComment } from '../extensions/PendingComment';
 import { AnnotationFocus } from '../extensions/AnnotationFocus';
@@ -87,6 +88,7 @@ const QuillEditor = forwardRef<EditorRef, EditorProps>(
         TaskList,
         TaskItem.configure({ nested: true }),
         Markdown.configure({ html: false, tightLists: true }),
+        Find,
         CommentMark,
         PendingComment,
         AnnotationFocus,

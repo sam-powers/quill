@@ -26,6 +26,7 @@ A writer or editor working on Markdown documents (often ones drafted with Claude
 - Formatting toolbar: **italic, bold, underline, strikethrough**, **undo/redo**, **H1/H2/H3**, **bullet list, numbered list, blockquote, inline code**.
 - Toolbar actions preserve the active text selection (a known editor pitfall, handled deliberately).
 - Document zoom from **60% to 240%** via toolbar shortcuts (Cmd +/−/0) and a footer slider (double-click the % to reset to 100%).
+- **Find & replace (Cmd+F):** a floating bar over the workspace with live match highlighting, a match counter, Enter / Shift+Enter (or ↑/↓) navigation with wrap-around, Replace and Replace All (Replace All is a single undo step). Search is case-insensitive, matches across formatting boundaries, and skips struck-out (pending-deletion) text. Replacement is an ordinary edit: in Suggesting mode it produces a tracked replacement pair like any hand-typed edit. Esc closes the bar and clears the highlights; Cmd+F while open re-selects the query.
 - Four selectable color **themes** (Sage, Mocha · Dragonfly, Watery · Adirondack, Rodeo · Ecological), persisted to local storage across launches.
 
 ### 3.2 Two modes: Editing and Suggesting
