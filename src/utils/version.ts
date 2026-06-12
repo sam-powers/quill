@@ -18,7 +18,8 @@ export function isNewerVersion(candidate: string, current: string): boolean {
 
 function parseVersion(v: string): number[] | null {
   const parts = v.trim().replace(/^v/, '').split('.');
-  const nums = parts.map((p) => Number.parseInt(p, 10));
-  if (nums.length === 0 || nums.some((n) => !Number.isFinite(n) || n < 0)) return null;
-  return nums;
+  // Each segment must be purely digits: parseInt would read "0-rc1" as 0,
+  // making a prerelease tag look like a stable release.
+  if (parts.length === 0 || parts.some((p) => !/^\d+$/.test(p))) return null;
+  return parts.map((p) => Number.parseInt(p, 10));
 }

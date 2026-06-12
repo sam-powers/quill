@@ -1,4 +1,5 @@
 import type { TrackedChangeInfo } from '../types';
+import { timeAgo, clip } from '../utils/format';
 
 interface SuggestionCardProps {
   change: TrackedChangeInfo;
@@ -7,16 +8,6 @@ interface SuggestionCardProps {
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
   onClick: (id: string) => void;
-}
-
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 export default function SuggestionCard({
@@ -28,7 +19,7 @@ export default function SuggestionCard({
   onClick,
 }: SuggestionCardProps) {
   const isInsert = change.operation === 'insert';
-  const preview = change.text.slice(0, 60) + (change.text.length > 60 ? '…' : '');
+  const preview = clip(change.text);
   const authorLabel = change.authorID === 'claude' ? 'Claude (AI)' : change.authorID;
 
   return (

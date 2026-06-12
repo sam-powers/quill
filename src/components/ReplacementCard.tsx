@@ -1,4 +1,5 @@
 import type { TrackedChangeInfo } from '../types';
+import { timeAgo, clip } from '../utils/format';
 
 interface ReplacementCardProps {
   /** The delete half — the original text being replaced. */
@@ -11,20 +12,6 @@ interface ReplacementCardProps {
   onAccept: (pairId: string) => void;
   onReject: (pairId: string) => void;
   onClick: (pairId: string) => void;
-}
-
-function timeAgo(ts: number): string {
-  const diff = Date.now() - ts;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function clip(text: string): string {
-  return text.slice(0, 60) + (text.length > 60 ? '…' : '');
 }
 
 export default function ReplacementCard({

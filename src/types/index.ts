@@ -33,7 +33,7 @@ export interface Comment {
   replies: Reply[];
 }
 
-export type SuggestionType = 'insertion' | 'deletion' | 'replacement';
+export type SuggestionType = 'insertion' | 'deletion';
 export type SuggestionStatus = 'pending' | 'accepted' | 'rejected';
 
 export interface Suggestion {

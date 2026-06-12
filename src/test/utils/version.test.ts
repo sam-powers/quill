@@ -34,4 +34,11 @@ describe('isNewerVersion', () => {
     expect(isNewerVersion('', '0.3.0')).toBe(false);
     expect(isNewerVersion('0.4.0', 'unknown')).toBe(false);
   });
+
+  it('rejects prerelease and otherwise non-numeric segments', () => {
+    // parseInt would read "0-rc1" as 0 and flag the prerelease as an update.
+    expect(isNewerVersion('1.1.0-rc1', '1.0.0')).toBe(false);
+    expect(isNewerVersion('1.0.0-beta.2', '0.9.0')).toBe(false);
+    expect(isNewerVersion('1.0.x', '0.9.0')).toBe(false);
+  });
 });

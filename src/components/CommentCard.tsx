@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import type { Comment, Reply } from '../types';
+import { timeAgo } from '../utils/format';
 
 interface CommentCardProps {
   comment: Comment;
@@ -13,17 +14,6 @@ interface CommentCardProps {
   onUnresolve: (commentId: string) => void;
   onDelete: (commentId: string) => void;
   onClick: (commentId: string) => void;
-}
-
-function timeAgo(isoDate: string): string {
-  const diff = Date.now() - new Date(isoDate).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}min ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 function ReplyView({
