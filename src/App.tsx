@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import CommentLayer from './components/CommentLayer';
 import AddCommentButton from './components/AddCommentButton';
 import SessionPicker from './components/SessionPicker';
+import FindBar from './components/FindBar';
 import AppModal from './components/AppModal';
 import UpdateBanner from './components/UpdateBanner';
 import { useFileManager } from './hooks/useFileManager';
@@ -61,6 +62,7 @@ export default function App() {
   const [zoom, setZoom] = useState(1);
   const [, setScrollTick] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  const [findOpen, setFindOpen] = useState(false);
   // Whether a real native menu owns the file-operation accelerators. Defaults
   // to false so JS handles the shortcuts (dev server / e2e); flipped to true
   // once the backend confirms a native menu exists (see effect below).
@@ -533,6 +535,14 @@ export default function App() {
         }
       }
 
+      // Cmd+F opens find & replace (re-focus when already open is handled by
+      // the bar itself, which also owns Esc-to-close and Enter navigation).
+      if (e.key === 'f' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        setFindOpen(true);
+        return;
+      }
+
       if (e.key === '=' || e.key === '+') {
         e.preventDefault();
         setZoom((z) => Math.min(2.4, Math.round((z + 0.12) * 100) / 100));
@@ -834,6 +844,15 @@ export default function App() {
       )}
 
       <div className="workspace" ref={scrollAreaRef}>
+        {findOpen && (
+          <FindBar
+            editor={editor}
+            onClose={() => {
+              setFindOpen(false);
+              editor?.commands.focus();
+            }}
+          />
+        )}
         <div className="editor-scroll-area">
           <div className="editor-page-zoom-wrapper" style={{ zoom }}>
             <QuillEditor
