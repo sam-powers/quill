@@ -25,6 +25,7 @@ interface CommentLayerProps {
   onActivateSuggestion: (id: string) => void;
   onAcceptChange: (id: string) => void;
   onRejectChange: (id: string) => void;
+  onReviewDocument: () => void;
 }
 
 interface CardPosition {
@@ -136,6 +137,7 @@ export default function CommentLayer({
   onActivateSuggestion,
   onAcceptChange,
   onRejectChange,
+  onReviewDocument,
 }: CommentLayerProps) {
   const [cardPositions, setCardPositions] = useState<CardPosition[]>([]);
   const rafRef = useRef<number>(0);
@@ -257,6 +259,10 @@ export default function CommentLayer({
 
   return (
     <div className="comment-layer" ref={containerRef as React.RefObject<HTMLDivElement>}>
+      <button className="review-doc-btn" onClick={onReviewDocument}>
+        ✨ Review full document
+      </button>
+
       {resolvedComments.length > 0 && (
         <button className="show-resolved-btn" onClick={() => setShowResolved((v) => !v)}>
           {showResolved ? 'Hide' : 'Show'} {resolvedComments.length} resolved

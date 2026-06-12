@@ -102,6 +102,20 @@ export interface QuillEditsBlock {
 export type EditScope = 'highlight' | 'paragraph' | 'doc';
 
 /**
+ * One margin comment Claude proposes during a full-document review: anchor a
+ * comment to the first occurrence of the plaintext `find` in the document.
+ */
+export interface QuillComment {
+  find: string;
+  comment: string;
+}
+
+/** The parsed contents of a ```quill-comments fenced block in a review reply. */
+export interface QuillCommentsBlock {
+  comments: QuillComment[];
+}
+
+/**
  * Snapshot of unsaved work, written to `draft.json` in the app data dir while
  * the document is dirty and offered for recovery on the next launch. Deleted
  * when the document becomes clean (save / discard / new).

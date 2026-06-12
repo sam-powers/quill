@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 import { Channel, invoke } from '@tauri-apps/api/core';
 import type { AISessionBinding, Comment, EditScope, QuillEdit, QuillEditsBlock } from '../types';
 
-type ChunkEvent =
+export type ChunkEvent =
   | { kind: 'delta'; text: string }
   | { kind: 'done' }
   | { kind: 'error'; message: string }

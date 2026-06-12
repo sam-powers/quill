@@ -950,7 +950,8 @@ del.track-delete {
   pointer-events: none;
 }
 
-.comment-layer > .show-resolved-btn {
+.comment-layer > .show-resolved-btn,
+.comment-layer > .review-doc-btn {
   pointer-events: auto;
 }
 .comment-layer-scroll > * {
@@ -1278,6 +1279,96 @@ del.track-delete {
 .show-resolved-btn:hover {
   background: var(--color-accent-light);
   color: var(--color-accent-dark);
+}
+
+/* ── Review full document ──────────────────────────────────────── */
+.review-doc-btn {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 0 10px var(--space-md);
+  font-size: var(--text-meta);
+  font-weight: 400;
+  color: var(--color-accent-dark);
+  background: transparent;
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  text-align: center;
+}
+.review-doc-btn:hover {
+  background: var(--color-accent-light);
+}
+
+.review-modal {
+  width: 480px;
+}
+.review-modal-label {
+  display: block;
+  font-size: var(--text-meta);
+  font-weight: 400;
+  color: var(--color-ink-mid);
+  margin-bottom: 6px;
+}
+.review-modal-guidance {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  color: var(--color-ink);
+  background: var(--color-page);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  margin-bottom: 12px;
+}
+.review-modal-guidance:focus {
+  outline: none;
+  border-color: var(--color-accent-mid);
+}
+.review-modal-checks {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+.review-modal-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-meta);
+  color: var(--color-ink-mid);
+  cursor: pointer;
+}
+.review-modal-stream {
+  font-size: var(--text-meta);
+  font-weight: 300;
+  color: var(--color-ink-mid);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.review-modal-summary {
+  margin: 0 0 16px;
+  font-size: var(--text-meta);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.review-modal-error {
+  color: #b54134;
+}
+.streaming-cursor::after {
+  content: '\258b';
+  animation: review-cursor-blink 1s steps(2) infinite;
+  color: var(--color-accent);
+}
+@keyframes review-cursor-blink {
+  50% {
+    opacity: 0;
+  }
 }
 
 /* ── Suggestion cards ──────────────────────────────────────────── */

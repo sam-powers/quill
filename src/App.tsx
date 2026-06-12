@@ -9,6 +9,7 @@ import AddCommentButton from './components/AddCommentButton';
 import SessionPicker from './components/SessionPicker';
 import FindBar from './components/FindBar';
 import AppModal from './components/AppModal';
+import ReviewModal from './components/ReviewModal';
 import UpdateBanner from './components/UpdateBanner';
 import { useFileManager } from './hooks/useFileManager';
 import { useDraftAutosave } from './hooks/useDraftAutosave';
@@ -17,12 +18,14 @@ import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
 import { useClaudeReply } from './hooks/useClaudeReply';
+import { useDocumentReview } from './hooks/useDocumentReview';
+import type { ReviewOptions } from './hooks/useDocumentReview';
 import { getTrackedChanges } from './extensions/TrackChanges';
 import { setImageBaseDir } from './extensions/MarkdownImage';
 import { detectLossyConstructs } from './utils/markdownFidelity';
 import { findAnnotationRange } from './extensions/AnnotationFocus';
 import type { AnnotationKind } from './extensions/AnnotationFocus';
-import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
+import { locateEdit, planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
 import { basename, dirname } from './utils/path';
 import {
   addRecentFile,
@@ -91,6 +94,10 @@ export default function App() {
   // A @claude request made before a session was linked; fired once the user
   // picks a session via the picker we open for them.
   const pendingAIRequestRef = useRef<{ commentId: string; userText: string } | null>(null);
+  // The "Review full document" modal, plus a review request made before a
+  // session was linked (resumed once the user picks one, like AI replies).
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const pendingReviewRef = useRef(false);
 
   // In-app dialogs (window.alert/confirm are unreliable in Tauri webviews):
   // a notice with a single OK, and the unsaved-changes guard holding the
@@ -201,7 +208,7 @@ export default function App() {
   // suggesting mode on (under Claude's author id) for the duration, applies each
   // located edit back-to-front, then restores the user's prior mode/author.
   const applyTrackedEdits = useCallback(
-    (comment: Comment, edits: QuillEdit[], scope: EditScope) => {
+    (comment: { from: number; to: number }, edits: QuillEdit[], scope: EditScope) => {
       const ed = editor;
       if (!ed) return { applied: 0, skipped: edits.length };
 
@@ -241,6 +248,45 @@ export default function App() {
     getRangeTexts,
     applyTrackedEdits,
     getContextFolder: useCallback(() => contextFolderRef.current, []),
+  });
+
+  // Doc-scoped wrapper for the full-document review: the same tracked-edit
+  // pipeline, always over the whole document (the anchor range is unused).
+  const applyDocTrackedEdits = useCallback(
+    (edits: QuillEdit[]) => applyTrackedEdits({ from: 0, to: 0 }, edits, 'doc'),
+    [applyTrackedEdits],
+  );
+
+  // Anchor one Claude review comment: locate `find` in the whole document,
+  // mark the range, and attach the remark as a finished AI reply so it renders
+  // with the Claude styling. False when the quote isn't found verbatim.
+  const addClaudeComment = useCallback(
+    (find: string, body: string): boolean => {
+      const ed = editor;
+      if (!ed || find.trim().length === 0 || body.trim().length === 0) return false;
+      const doc = ed.state.doc;
+      const range = locateEdit(doc, 0, doc.content.size, find);
+      if (!range || range.from === range.to) return false;
+      const comment = addComment(
+        rangeText(doc, range.from, range.to),
+        range.from,
+        range.to,
+        'Claude',
+      );
+      ed.chain().setTextSelection({ from: range.from, to: range.to }).setComment(comment.id).run();
+      const replyId = startAIReply(comment.id);
+      appendAIReplyChunk(comment.id, replyId, body);
+      finishAIReply(comment.id, replyId);
+      return true;
+    },
+    [editor, addComment, startAIReply, appendAIReplyChunk, finishAIReply],
+  );
+
+  const docReview = useDocumentReview({
+    getDocMarkdown,
+    getContextFolder: useCallback(() => contextFolderRef.current, []),
+    applyTrackedEdits: applyDocTrackedEdits,
+    addClaudeComment,
   });
 
   // Re-render on scroll so button top tracks live coordsAtPos
@@ -834,9 +880,37 @@ export default function App() {
         const comment = comments.find((c) => c.id === pending.commentId);
         if (comment) void claudeReply.ask(comment, pending.userText, binding);
       }
+      // Same for a "Review full document" click with no session: resume by
+      // opening the review modal against the freshly-linked session.
+      if (pendingReviewRef.current) {
+        pendingReviewRef.current = false;
+        setReviewOpen(true);
+      }
     },
     [markDirty, comments, claudeReply],
   );
+
+  const handleReviewDocument = useCallback(() => {
+    if (!aiSession) {
+      pendingReviewRef.current = true;
+      setPickerOpen(true);
+      return;
+    }
+    setReviewOpen(true);
+  }, [aiSession]);
+
+  const handleReviewSubmit = useCallback(
+    (options: ReviewOptions) => {
+      if (!aiSession) return;
+      void docReview.start(options, aiSession);
+    },
+    [aiSession, docReview],
+  );
+
+  const handleReviewClose = useCallback(() => {
+    setReviewOpen(false);
+    docReview.reset();
+  }, [docReview]);
 
   const handleUnlinkSession = useCallback(() => {
     setAISession(null);
@@ -951,6 +1025,7 @@ export default function App() {
           onActivateSuggestion={handleActivateSuggestion}
           onAcceptChange={handleAcceptChange}
           onRejectChange={handleRejectChange}
+          onReviewDocument={handleReviewDocument}
         />
       </div>
 
@@ -971,10 +1046,24 @@ export default function App() {
 
       <SessionPicker
         open={pickerOpen}
-        onClose={() => setPickerOpen(false)}
+        onClose={() => {
+          setPickerOpen(false);
+          // Closing without picking abandons a stashed review request — the
+          // user backed out, so a later manual link shouldn't pop the modal.
+          pendingReviewRef.current = false;
+        }}
         onPick={handlePickSession}
         newSessionCwd={filePath ? dirname(filePath) : null}
       />
+
+      {reviewOpen && (
+        <ReviewModal
+          phase={docReview.phase}
+          onSubmit={handleReviewSubmit}
+          onCancelStream={() => void docReview.cancel()}
+          onClose={handleReviewClose}
+        />
+      )}
 
       {discardGuard && (
         <AppModal

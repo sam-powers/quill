@@ -67,6 +67,12 @@ You can also ask Claude to **make edits**: _"@claude tighten this section."_ Its
 
 Phrasing controls how much Claude may touch: by default it edits only the highlighted text; say "this paragraph" or "the whole document" to widen the scope.
 
+### Review the whole document
+
+When a draft is nearly done, click **✨ Review full document** at the top of the comment column for a single polishing pass instead of commenting section by section. A dialog opens with a ready-made review prompt — edit it for a focused pass (_"make it 20% shorter"_, _"check the tone for a customer audience"_) or just hit **Submit**. Two checkboxes control what comes back: **Make comments** (margin notes from Claude on specific passages) and **Make suggestions** (tracked changes you Accept or Reject, like any other edit).
+
+Claude reads the whole document, streams its assessment into the dialog, and when it finishes you'll see a summary like _"2 comments added · 3 suggestions proposed"_ — the comments and suggestions are waiting in the margin behind the dialog. Nothing is applied without your review, and you can cancel mid-stream at any time.
+
 ## Reference folders
 
 If your document draws on source material — interview notes, research PDFs, data files — put them in a folder and click **📁 Link reference folder…** in the bottom bar. From then on, every `@claude` request lets Claude read that folder, and it's told which files are in it, so you can ask things like _"@claude check this summary against the interview notes."_
