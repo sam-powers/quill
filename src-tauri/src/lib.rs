@@ -60,6 +60,55 @@ async fn show_folder_dialog(app: tauri::AppHandle) -> Result<Option<String>, Str
     Ok(path.map(|p| p.to_string()))
 }
 
+/// Path of the crash-recovery draft inside the app data directory. A single
+/// draft, not one per document: Quill is a single-window, single-document
+/// app, so at most one document can have unsaved changes.
+fn draft_file_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("draft.json"))
+}
+
+/// Write-then-rename so a crash mid-write can't leave a truncated draft —
+/// the draft exists precisely to survive crashes.
+fn write_draft_at(path: &std::path::Path, content: &str) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, content).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+fn read_draft_at(path: &std::path::Path) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => Ok(Some(s)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+fn delete_draft_at(path: &std::path::Path) -> Result<(), String> {
+    if path.exists() {
+        std::fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn write_draft(app: tauri::AppHandle, content: String) -> Result<(), String> {
+    write_draft_at(&draft_file_path(&app)?, &content)
+}
+
+#[tauri::command]
+fn read_draft(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    read_draft_at(&draft_file_path(&app)?)
+}
+
+#[tauri::command]
+fn delete_draft(app: tauri::AppHandle) -> Result<(), String> {
+    delete_draft_at(&draft_file_path(&app)?)
+}
+
 /// Document-like extensions worth surfacing in the context-folder manifest.
 /// The manifest only tells Claude what exists — it reads files itself via
 /// `--add-dir` — so this is about keeping the prompt focused, not access.
@@ -141,6 +190,40 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    // --- draft persistence ---
+
+    #[test]
+    fn draft_round_trips_and_creates_parent_dirs() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nested").join("draft.json");
+        assert_eq!(read_draft_at(&path).unwrap(), None);
+        write_draft_at(&path, r#"{"version":1}"#).unwrap();
+        assert_eq!(
+            read_draft_at(&path).unwrap(),
+            Some(r#"{"version":1}"#.to_string())
+        );
+    }
+
+    #[test]
+    fn draft_write_overwrites_and_leaves_no_tmp_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("draft.json");
+        write_draft_at(&path, "first").unwrap();
+        write_draft_at(&path, "second").unwrap();
+        assert_eq!(read_draft_at(&path).unwrap(), Some("second".to_string()));
+        assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn draft_delete_removes_file_and_is_ok_when_missing() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("draft.json");
+        delete_draft_at(&path).unwrap();
+        write_draft_at(&path, "x").unwrap();
+        delete_draft_at(&path).unwrap();
+        assert_eq!(read_draft_at(&path).unwrap(), None);
+    }
 
     // --- read_file ---
 
@@ -1231,6 +1314,9 @@ pub fn run() {
             show_save_dialog,
             show_folder_dialog,
             list_context_files,
+            write_draft,
+            read_draft,
+            delete_draft,
             list_claude_sessions,
             read_claude_session_preview,
             spawn_claude_resume,

@@ -10,6 +10,8 @@ import SessionPicker from './components/SessionPicker';
 import AppModal from './components/AppModal';
 import UpdateBanner from './components/UpdateBanner';
 import { useFileManager } from './hooks/useFileManager';
+import { useDraftAutosave } from './hooks/useDraftAutosave';
+import type { DraftSnapshot } from './hooks/useDraftAutosave';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import { useComments } from './hooks/useComments';
 import { useSuggestions } from './hooks/useSuggestions';
@@ -25,6 +27,7 @@ import { sidecarPath } from './utils/sidecarPath';
 import type {
   AISessionBinding,
   Comment,
+  DraftFile,
   EditScope,
   QuillEdit,
   SidecarFile,
@@ -92,8 +95,17 @@ export default function App() {
     [],
   );
 
-  const { filePath, isDirty, markDirty, openFile, openFilePath, saveFile, saveFileAs, newFile } =
-    useFileManager(showError);
+  const {
+    filePath,
+    isDirty,
+    markDirty,
+    openFile,
+    openFilePath,
+    saveFile,
+    saveFileAs,
+    newFile,
+    restoreDraft,
+  } = useFileManager(showError);
 
   // Live dirty flag for listeners registered once (close-requested, deep-link)
   // so they don't need to re-register on every edit.
@@ -125,6 +137,36 @@ export default function App() {
   const { suggestions, setSuggestions } = useSuggestions();
 
   const getDocMarkdown = useCallback(() => editorRef.current?.getMarkdown() ?? '', []);
+
+  // Crash-recovery autosave: while dirty, the document (plus annotations and
+  // links) is snapshotted to draft.json every few seconds; a clean state
+  // deletes it. On launch we offer any leftover draft for recovery below.
+  const getDraftSnapshot = useCallback(
+    (): DraftSnapshot => ({
+      filePath,
+      content: getDocMarkdown(),
+      comments,
+      suggestions,
+      aiSession,
+      contextFolder,
+    }),
+    [filePath, getDocMarkdown, comments, suggestions, aiSession, contextFolder],
+  );
+  const { readDraft, deleteDraft } = useDraftAutosave({
+    isDirty,
+    getSnapshot: getDraftSnapshot,
+  });
+
+  // A draft left behind by a crashed/killed run, awaiting the user's
+  // Recover / Discard decision.
+  const [recoveryDraft, setRecoveryDraft] = useState<DraftFile | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const draft = await readDraft();
+      if (draft) setRecoveryDraft(draft);
+    })();
+  }, [readDraft]);
 
   // Read the live document text for a comment's anchored range and its
   // enclosing paragraph, as plaintext (matching how Claude's `find` strings are
@@ -347,6 +389,27 @@ export default function App() {
     setAISession(null);
     setContextFolder(null);
   }, [newFile, setComments, setSuggestions]);
+
+  // Adopt the recovered draft as the open (dirty) document. The draft's
+  // content is newer than anything on disk, so nothing is read from the file —
+  // the user decides whether to save over it.
+  const handleRecoverDraft = useCallback(() => {
+    const draft = recoveryDraft;
+    if (!draft) return;
+    setRecoveryDraft(null);
+    restoreDraft(draft.filePath);
+    setImageBaseDir(draft.filePath ? dirname(draft.filePath) : null);
+    editorRef.current?.setContent(draft.content);
+    setComments(draft.comments ?? []);
+    setSuggestions(draft.suggestions ?? []);
+    setAISession(draft.aiSession ?? null);
+    setContextFolder(draft.contextFolder ?? null);
+  }, [recoveryDraft, restoreDraft, setComments, setSuggestions]);
+
+  const handleDiscardDraft = useCallback(() => {
+    setRecoveryDraft(null);
+    void deleteDraft();
+  }, [deleteDraft]);
 
   // New / Open replace the document, so both run through the unsaved-changes
   // guard. Quit goes through the same guard, then asks the backend to exit
@@ -867,6 +930,10 @@ export default function App() {
                 // fails — the unsaved document is still at stake.
                 const saved = await handleSave();
                 if (saved) {
+                  // The guarded action may exit the app before React effects
+                  // flush, so don't rely on the autosave hook's dirty→clean
+                  // cleanup — remove the draft explicitly first.
+                  await deleteDraft();
                   setDiscardGuard(null);
                   discardGuard.run();
                 }
@@ -875,7 +942,10 @@ export default function App() {
             {
               label: "Don't Save",
               kind: 'danger',
-              onClick: () => {
+              onClick: async () => {
+                // Explicitly discarded — the draft must not come back as a
+                // recovery offer on next launch (and quit skips effects).
+                await deleteDraft();
                 setDiscardGuard(null);
                 discardGuard.run();
               },
@@ -894,6 +964,24 @@ export default function App() {
           title={notice.title}
           message={notice.message}
           buttons={[{ label: 'OK', kind: 'primary', onClick: () => setNotice(null) }]}
+        />
+      )}
+
+      {recoveryDraft && !discardGuard && !notice && (
+        <AppModal
+          title="Recover unsaved changes?"
+          message={
+            `Quill closed before ${
+              recoveryDraft.filePath
+                ? `"${basename(recoveryDraft.filePath)}"`
+                : 'an untitled document'
+            } was saved. ` +
+            `Restore the unsaved version from ${new Date(recoveryDraft.savedAt).toLocaleString()}?`
+          }
+          buttons={[
+            { label: 'Recover', kind: 'primary', onClick: handleRecoverDraft },
+            { label: 'Discard', kind: 'danger', onClick: handleDiscardDraft },
+          ]}
         />
       )}
     </div>
