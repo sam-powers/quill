@@ -24,6 +24,12 @@ import { findAnnotationRange } from './extensions/AnnotationFocus';
 import type { AnnotationKind } from './extensions/AnnotationFocus';
 import { planEdits, rangeText, resolveScopeRange } from './utils/trackedEdits';
 import { basename, dirname } from './utils/path';
+import {
+  addRecentFile,
+  clearRecentFiles,
+  getRecentFiles,
+  syncRecentMenu,
+} from './utils/recentFiles';
 import { sidecarPath } from './utils/sidecarPath';
 import type {
   AISessionBinding,
@@ -274,6 +280,7 @@ export default function App() {
       // Must precede setContent: ProseMirror draws the document (and thus
       // resolves image srcs) synchronously when content is set.
       setImageBaseDir(dirname(result.filePath));
+      void syncRecentMenu(addRecentFile(result.filePath));
       editorRef.current?.setContent(result.content);
       setComments(result.sidecar.comments ?? []);
       setSuggestions(result.sidecar.suggestions ?? []);
@@ -365,7 +372,10 @@ export default function App() {
     const path = await saveFileAs(getMarkdown(), comments, suggestions, aiSession, contextFolder);
     // The document gained (or moved) a directory — relative image paths now
     // resolve against it for anything drawn from here on.
-    if (path) setImageBaseDir(dirname(path));
+    if (path) {
+      setImageBaseDir(dirname(path));
+      void syncRecentMenu(addRecentFile(path));
+    }
     return path;
   }, [saveFileAs, comments, suggestions, aiSession, contextFolder]);
 
@@ -472,12 +482,42 @@ export default function App() {
         await wire('menu-save', () => void handleSave());
         await wire('menu-save-as', () => void handleSaveAs());
         await wire('menu-quit', handleQuit);
+        await wire('menu-clear-recent', () => void syncRecentMenu(clearRecentFiles()));
+        // Open Recent replaces the document, so it runs through the same
+        // unsaved-changes guard as File → Open and deep links.
+        unlisteners.push(
+          await listen<string>('menu-open-recent', (e) => {
+            const path = e.payload;
+            if (!path) return;
+            guardDirty(() => {
+              void (async () => {
+                const result = await openFilePath(path);
+                if (result) loadFileResult(result);
+              })();
+            });
+          }),
+        );
       } catch {
         // Non-Tauri context — no native menu.
       }
     })();
     return () => unlisteners.forEach((u) => u());
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, handleQuit]);
+  }, [
+    handleNew,
+    handleOpen,
+    handleSave,
+    handleSaveAs,
+    handleQuit,
+    guardDirty,
+    openFilePath,
+    loadFileResult,
+  ]);
+
+  // Fill File → Open Recent from the persisted list once on launch; after
+  // this, every add/clear re-syncs the menu itself.
+  useEffect(() => {
+    void syncRecentMenu(getRecentFiles());
+  }, []);
 
   // Detect whether a real native menu is present. We can't infer this from
   // `__TAURI_INTERNALS__`: the e2e suite mocks that global but has no native
