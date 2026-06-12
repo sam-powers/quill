@@ -1,6 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Editor } from '@tiptap/react';
 import { toolbarSelectionStore } from './Editor';
+
+/**
+ * Make a typed URL usable as an href: anything with an explicit scheme
+ * (https:, mailto:) or an in-page/relative reference passes through; a bare
+ * domain like "example.com" gets https://. Empty input stays empty.
+ */
+export function normalizeHref(raw: string): string {
+  const url = raw.trim();
+  if (!url) return '';
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || /^[#/.]/.test(url)) return url;
+  return `https://${url}`;
+}
 
 interface ToolbarProps {
   editor: Editor | null;
@@ -156,6 +168,13 @@ const CodeIcon = () => (
   </svg>
 );
 
+const LinkIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </svg>
+);
+
 const UndoIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M3 7v6h6" />
@@ -264,6 +283,124 @@ function ThemeSelector() {
               <span className="theme-label">{t.label}</span>
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LinkButton({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
+  const [url, setUrl] = useState('');
+  // The popover's input steals focus from the editor, so capture the target
+  // range when opening and re-apply it when the link is committed.
+  const [range, setRange] = useState<{ from: number; to: number } | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const onLink = editor.isActive('link');
+  const { from, to } = editor.state.selection;
+  const canLink = onLink || from !== to;
+
+  const openPopover = () => {
+    const sel = editor.state.selection;
+    if (sel.from === sel.to && !editor.isActive('link')) return;
+    setUrl((editor.getAttributes('link').href as string | undefined) ?? '');
+    setRange({ from: sel.from, to: sel.to });
+    setOpen(true);
+  };
+
+  const close = () => {
+    setOpen(false);
+    setRange(null);
+    editor.commands.focus();
+  };
+
+  const apply = () => {
+    if (!range) return;
+    const href = normalizeHref(url);
+    // extendMarkRange covers the whole existing link when the cursor sits
+    // inside one; on plain text it leaves the selection alone. An empty URL
+    // removes the link, same as the explicit Remove button.
+    const chain = editor.chain().focus().setTextSelection(range).extendMarkRange('link');
+    if (href) {
+      chain.setLink({ href });
+    } else {
+      chain.unsetLink();
+    }
+    chain.run();
+    setOpen(false);
+    setRange(null);
+  };
+
+  const remove = () => {
+    if (!range) return;
+    editor.chain().focus().setTextSelection(range).extendMarkRange('link').unsetLink().run();
+    setOpen(false);
+    setRange(null);
+  };
+
+  // Cmd+K from anywhere (the editor owns focus most of the time).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        const sel = editor.state.selection;
+        if (sel.from === sel.to && !editor.isActive('link')) return;
+        setUrl((editor.getAttributes('link').href as string | undefined) ?? '');
+        setRange({ from: sel.from, to: sel.to });
+        setOpen(true);
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editor]);
+
+  // Click outside closes, like the theme selector menu.
+  useEffect(() => {
+    if (!open) return;
+    const closeOnOutside = (e: MouseEvent) => {
+      if (!(e.target instanceof Element)) return;
+      if (!e.target.closest('.link-button-wrap')) setOpen(false);
+    };
+    document.addEventListener('mousedown', closeOnOutside);
+    return () => document.removeEventListener('mousedown', closeOnOutside);
+  }, [open]);
+
+  return (
+    <div className="link-button-wrap">
+      <ToolbarButton onClick={openPopover} active={onLink} disabled={!canLink} title="Link (Cmd+K)">
+        <LinkIcon />
+      </ToolbarButton>
+      {open && (
+        <div className="link-popover" role="dialog" aria-label="Edit link">
+          <input
+            ref={inputRef}
+            className="link-popover-input"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                apply();
+              }
+              if (e.key === 'Escape') close();
+            }}
+            placeholder="https://example.com"
+            autoFocus
+          />
+          <button
+            className="link-popover-btn link-popover-apply"
+            onClick={apply}
+            disabled={!url.trim() && !onLink}
+          >
+            {onLink ? 'Update' : 'Add link'}
+          </button>
+          {onLink && (
+            <button className="link-popover-btn" onClick={remove}>
+              Remove
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -397,6 +534,7 @@ export default function Toolbar({
       >
         <CodeIcon />
       </ToolbarButton>
+      <LinkButton editor={editor} />
 
       <Divider />
 

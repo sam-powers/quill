@@ -423,6 +423,71 @@ body,
   font-weight: 600;
 }
 
+/* ── Link popover ───────────────────────────────────────────────── */
+.link-button-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.link-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: var(--color-page);
+  border: 0.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.link-popover-input {
+  width: 220px;
+  padding: 4px 8px;
+  border: 0.5px solid var(--color-border-light);
+  border-radius: var(--radius-sm);
+  background: var(--color-page);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-ui);
+}
+
+.link-popover-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.link-popover-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-mid);
+  font-family: var(--font-sans);
+  font-size: var(--text-meta);
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.link-popover-btn:hover:not(:disabled) {
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+}
+
+.link-popover-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.link-popover-apply {
+  color: var(--color-accent-dark);
+  font-weight: 700;
+}
+
 /* ── Update banner ──────────────────────────────────────────────── */
 .update-banner {
   display: flex;

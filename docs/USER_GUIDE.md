@@ -28,6 +28,7 @@ Each time Quill starts it checks whether a newer version has been released. If t
 - **Open** a Markdown (`.md`) file with **File → Open…** (or Cmd/Ctrl+O), **save** with Cmd/Ctrl+S.
 - The toolbar has the usual formatting: bold, italic, headings, lists, quotes.
 - **Find & replace** with Cmd/Ctrl+F: type to highlight matches, Enter / Shift+Enter to step through them, **Replace** / **All** to swap them out, Esc to close. In Suggesting mode a replacement shows up as a tracked change like any other edit.
+- **Links** with Cmd/Ctrl+K (or the chain-link toolbar button): select text and enter a URL — bare domains like `example.com` get `https://` added for you. Click inside an existing link and press Cmd/Ctrl+K again to change or remove it.
 - The bar at the bottom shows the file name, word count, and a dot (`•`) when you have unsaved changes. Quill always asks before letting unsaved work be lost.
 - Your document stays a normal Markdown file that any other app can read. Quill keeps its review data (comments and suggestions) in a small companion file next to it, named `<your file>.comments.json` — keep the two together if you move or share the document.
 
