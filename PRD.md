@@ -86,6 +86,7 @@ Comments and suggestions share one **focus** model, mirroring Google Docs:
 - **Dirty-state indicator** in both the window title and footer (`•`) when there are unsaved changes.
 - **Unsaved-changes guard:** any action that would discard a dirty document — File → New, File → Open, an incoming deep link, closing the window, or quitting the app — first asks **Save / Don't Save / Cancel** in an in-app dialog. Choosing Save runs the normal save (including Save As for an untitled doc) and only proceeds if it succeeds; cancelling the save dialog keeps the document open. (The menu's Quit item routes through this guard rather than quitting directly.)
 - **File errors are surfaced:** a failed open or save shows an in-app error dialog naming the file and the underlying OS error — a failed save is never silent (the dirty indicator also stays on). In-app dialogs are used instead of `window.alert`/`confirm`, which are unreliable in Tauri webviews.
+- **Crash recovery (draft autosave):** while a document has unsaved changes, Quill snapshots it — content plus comments, suggestions, session binding, and reference folder — to a single `draft.json` in the app data directory (immediately on becoming dirty, then every ~5 s, written atomically via temp-file + rename). The draft is deleted as soon as the document is clean again (save, discard, new). If a draft is still present at launch — the previous run crashed or was killed — Quill offers **Recover / Discard**: Recover restores the snapshot as the open dirty document (no disk read of the original file, whose content is older) and Discard deletes the draft. One draft slot is enough because Quill is single-window, single-document. The guard's Save and Don't Save paths delete the draft explicitly before proceeding, since quitting exits before React effects flush.
 
 ### 3.6 Status bar (footer)
 
@@ -98,6 +99,7 @@ Live **filename**, **word count**, **character count**, **line/column**, suggest
 - `Suggestion` (status pending / accepted / rejected). The `type` field allows `insertion | deletion | replacement`, but `replacement` is currently unused in the sidecar — the editor tracks changes as `tracked_insert` / `tracked_delete` marks. A replacement lives as a delete mark and an insert mark sharing a `pairId` (surfaced on `TrackedChangeInfo`), not as a third mark type.
 - `AISessionBinding` (`provider: claude-code`, session id, cwd, linkedAt, optional `createdByQuill` marking bindings minted by "Start new session" rather than linked to an existing authoring session).
 - `SidecarFile` (version 2: comments + suggestions + optional aiSession + optional contextFolder). The optional fields are backward compatible — older sidecars load unchanged.
+- `DraftFile` (version 1: savedAt + filePath-or-null + content + comments + suggestions + aiSession + contextFolder) — the crash-recovery snapshot serialized to `draft.json` in the app data dir. An unrecognized version or shape is treated as no draft.
 
 ## 5. Platform
 

@@ -100,3 +100,20 @@ export interface QuillEditsBlock {
 
 /** How far Claude's edits may reach, derived from the user's wording. */
 export type EditScope = 'highlight' | 'paragraph' | 'doc';
+
+/**
+ * Snapshot of unsaved work, written to `draft.json` in the app data dir while
+ * the document is dirty and offered for recovery on the next launch. Deleted
+ * when the document becomes clean (save / discard / new).
+ */
+export interface DraftFile {
+  version: 1;
+  savedAt: string;
+  /** The file the draft belongs to, or null for an untitled document. */
+  filePath: string | null;
+  content: string;
+  comments: Comment[];
+  suggestions: Suggestion[];
+  aiSession: AISessionBinding | null;
+  contextFolder: string | null;
+}
