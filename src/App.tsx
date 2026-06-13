@@ -518,6 +518,41 @@ export default function App() {
     return () => unlisten?.();
   }, []);
 
+  // Help → Copy Diagnostics: gather version/OS/log-path from the backend and
+  // put a paste-ready block on the clipboard for bug reports. All local; the
+  // log file itself is revealed separately (it may contain document text).
+  const handleCopyDiagnostics = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const d = await invoke<{
+        version: string;
+        os: string;
+        arch: string;
+        log_dir: string;
+      }>('get_diagnostics');
+      const text = [`Quill ${d.version}`, `OS: ${d.os} (${d.arch})`, `Logs: ${d.log_dir}`].join(
+        '\n',
+      );
+      await navigator.clipboard.writeText(text);
+      setNotice({
+        title: 'Diagnostics copied',
+        message: `Paste this into your bug report:\n\n${text}\n\nUse Help → Show Logs to attach the log file.`,
+      });
+    } catch {
+      // Non-Tauri context or clipboard denied — nothing actionable to show.
+    }
+  }, []);
+
+  // Help → Show Logs: reveal the log directory in the OS file manager.
+  const handleRevealLogs = useCallback(async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('reveal_logs');
+    } catch {
+      // Non-Tauri context.
+    }
+  }, []);
+
   // Native application menu (File → New/Open/Save/Save As). The Rust side owns
   // the accelerators and emits an event per item; we map each to the same
   // handler the in-app shortcuts use. In a non-Tauri context (plain dev server)
@@ -536,6 +571,8 @@ export default function App() {
         await wire('menu-save-as', () => void handleSaveAs());
         await wire('menu-quit', handleQuit);
         await wire('menu-clear-recent', () => void syncRecentMenu(clearRecentFiles()));
+        await wire('menu-copy-diagnostics', handleCopyDiagnostics);
+        await wire('menu-reveal-logs', handleRevealLogs);
         // Open Recent replaces the document, so it runs through the same
         // unsaved-changes guard as File → Open and deep links.
         unlisteners.push(
@@ -561,6 +598,8 @@ export default function App() {
     handleSave,
     handleSaveAs,
     handleQuit,
+    handleCopyDiagnostics,
+    handleRevealLogs,
     guardDirty,
     openFilePath,
     loadFileResult,
