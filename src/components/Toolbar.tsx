@@ -3,14 +3,30 @@ import type { Editor } from '@tiptap/react';
 import { toolbarSelectionStore } from './Editor';
 
 /**
- * Make a typed URL usable as an href: anything with an explicit scheme
- * (https:, mailto:) or an in-page/relative reference passes through; a bare
- * domain like "example.com" gets https://. Empty input stays empty.
+ * Schemes a link mark is allowed to carry. Anything else — most importantly
+ * `javascript:` and `data:` — is rejected rather than passed through, because
+ * the href is persisted into the saved `.md` and is later clickable: an
+ * untrusted scheme in a shared document would be a stored script-execution
+ * vector. The list is the set of navigations a Markdown link legitimately needs.
+ */
+const ALLOWED_LINK_SCHEMES = ['http', 'https', 'mailto', 'tel'];
+
+/**
+ * Make a typed URL usable as an href: a value with an allowed explicit scheme
+ * (https:, mailto:, tel:) or an in-page/relative reference passes through; a
+ * bare domain like "example.com" gets https://. A value carrying any other
+ * scheme (e.g. `javascript:`) is rejected and returns empty. Empty input stays
+ * empty.
  */
 export function normalizeHref(raw: string): string {
   const url = raw.trim();
   if (!url) return '';
-  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || /^[#/.]/.test(url)) return url;
+  // In-page / relative references (#anchor, /path, ./sibling) are always safe.
+  if (/^[#/.]/.test(url)) return url;
+  const schemeMatch = url.match(/^([a-z][a-z0-9+.-]*):/i);
+  if (schemeMatch) {
+    return ALLOWED_LINK_SCHEMES.includes(schemeMatch[1].toLowerCase()) ? url : '';
+  }
   return `https://${url}`;
 }
 

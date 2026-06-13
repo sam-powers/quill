@@ -81,6 +81,23 @@ describe('useUpdateCheck', () => {
     expect(second.result.current.update).toBeNull();
   });
 
+  it('falls back to the releases page when html_url is not a github.com https URL', async () => {
+    // A spoofed/compromised response must not redirect the user anywhere.
+    vi.stubGlobal('fetch', mockRelease('v0.4.0', 'javascript:alert(1)'));
+    const { result } = renderHook(() => useUpdateCheck({ currentVersion: '0.3.0', enabled: true }));
+
+    await waitFor(() => expect(result.current.update).not.toBeNull());
+    expect(result.current.update?.url).toBe('https://github.com/sam-powers/quill/releases/latest');
+  });
+
+  it('falls back to the releases page when html_url is a non-github host', async () => {
+    vi.stubGlobal('fetch', mockRelease('v0.4.0', 'https://evil.example.com/phish'));
+    const { result } = renderHook(() => useUpdateCheck({ currentVersion: '0.3.0', enabled: true }));
+
+    await waitFor(() => expect(result.current.update).not.toBeNull());
+    expect(result.current.update?.url).toBe('https://github.com/sam-powers/quill/releases/latest');
+  });
+
   it('a release newer than a dismissed one still shows', async () => {
     localStorage.setItem('quill.dismissed-update', '0.4.0');
     vi.stubGlobal('fetch', mockRelease('v0.5.0'));

@@ -24,4 +24,17 @@ describe('normalizeHref', () => {
     expect(normalizeHref('')).toBe('');
     expect(normalizeHref('   ')).toBe('');
   });
+
+  it('passes through tel: links', () => {
+    expect(normalizeHref('tel:+15551234567')).toBe('tel:+15551234567');
+  });
+
+  it('rejects dangerous schemes by returning empty', () => {
+    // These would be persisted into the saved .md and later clickable.
+    expect(normalizeHref('javascript:alert(1)')).toBe('');
+    expect(normalizeHref('JavaScript:alert(1)')).toBe('');
+    expect(normalizeHref('data:text/html,<script>alert(1)</script>')).toBe('');
+    expect(normalizeHref('vbscript:msgbox(1)')).toBe('');
+    expect(normalizeHref('file:///etc/passwd')).toBe('');
+  });
 });

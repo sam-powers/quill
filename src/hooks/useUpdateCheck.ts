@@ -5,6 +5,26 @@ const LATEST_RELEASE_API = 'https://api.github.com/repos/sam-powers/quill/releas
 const RELEASES_PAGE = 'https://github.com/sam-powers/quill/releases/latest';
 const DISMISSED_KEY = 'quill.dismissed-update';
 
+/**
+ * The "View release" button opens this URL in the user's browser, so it must
+ * not be trusted just because it came back in the API response. Accept it only
+ * if it's an `https://github.com/` URL; otherwise fall back to the hardcoded
+ * releases page. (A compromised or spoofed response can't redirect the user to
+ * an arbitrary scheme or host.)
+ */
+function safeReleaseUrl(htmlUrl: string | undefined): string {
+  if (!htmlUrl) return RELEASES_PAGE;
+  try {
+    const parsed = new URL(htmlUrl);
+    if (parsed.protocol === 'https:' && parsed.hostname === 'github.com') {
+      return htmlUrl;
+    }
+  } catch {
+    // Not a parseable URL.
+  }
+  return RELEASES_PAGE;
+}
+
 export interface UpdateInfo {
   /** Version of the newer release, without the leading "v" (e.g. "0.4.0"). */
   version: string;
@@ -50,7 +70,7 @@ export function useUpdateCheck({
         if (!release.tag_name || !isNewerVersion(release.tag_name, currentVersion)) return;
         const version = release.tag_name.replace(/^v/, '');
         if (localStorage.getItem(DISMISSED_KEY) === version) return;
-        setUpdate({ version, url: release.html_url ?? RELEASES_PAGE });
+        setUpdate({ version, url: safeReleaseUrl(release.html_url) });
       } catch {
         // Offline, rate-limited, or unmounted mid-flight — stay quiet.
       } finally {
