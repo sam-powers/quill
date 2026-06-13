@@ -1291,9 +1291,87 @@ fn cancel_claude_resume(
     Ok(())
 }
 
+/// Diagnostics a user can copy and paste into a bug report: app version, OS,
+/// architecture, and where the local log file lives so they can attach it.
+#[derive(Serialize)]
+struct Diagnostics {
+    version: String,
+    os: String,
+    arch: String,
+    log_dir: String,
+}
+
+#[tauri::command]
+fn get_diagnostics(app: tauri::AppHandle) -> Result<Diagnostics, String> {
+    let log_dir = app
+        .path()
+        .app_log_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "<unknown>".to_string());
+    Ok(Diagnostics {
+        version: app.package_info().version.to_string(),
+        os: std::env::consts::OS.to_string(),
+        arch: std::env::consts::ARCH.to_string(),
+        log_dir,
+    })
+}
+
+/// Open the app's log directory in the OS file manager (Help → Show Logs).
+#[tauri::command]
+fn reveal_logs(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = app.path().app_log_dir().map_err(|e| e.to_string())?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Route Rust panics into the log file (chaining the default hook so dev still
+/// gets the usual stderr output). Without this, a backend panic vanishes
+/// silently — there's no server to catch it. Installed before the builder so it
+/// covers setup too.
+fn install_panic_hook() {
+    let default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "<unknown>".to_string());
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "<non-string panic payload>".to_string());
+        log::error!("panic at {location}: {payload}");
+        default(info);
+    }));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    install_panic_hook();
     tauri::Builder::default()
+        .plugin(
+            // Local-only diagnostics: leveled logs to the app log dir (plus
+            // stdout in dev and the webview console so frontend logs land in
+            // the same file). Rotation keeps the newest file and one previous,
+            // capping disk use — KeepAll grows unbounded (plugins-workspace
+            // #1397). Nothing leaves the machine; the Help menu lets the user
+            // reveal or copy these when reporting a bug.
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("quill".into()),
+                    }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                ])
+                .level(log::LevelFilter::Info)
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
@@ -1323,6 +1401,8 @@ pub fn run() {
                         | "menu-save-as"
                         | "menu-quit"
                         | "menu-clear-recent"
+                        | "menu-reveal-logs"
+                        | "menu-copy-diagnostics"
                 ) {
                     let _ = app.emit(id, ());
                 }
@@ -1364,6 +1444,8 @@ pub fn run() {
             take_pending_deep_link,
             has_native_menu,
             update_recent_menu,
+            get_diagnostics,
+            reveal_logs,
             exit_app,
         ])
         .run(tauri::generate_context!())
@@ -1473,7 +1555,26 @@ fn build_menu(app: &tauri::AppHandle, recent: &[String]) -> Result<(), Box<dyn s
         ],
     )?;
 
-    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu])?;
+    // Help: local diagnostics. "Copy Diagnostics" puts version/OS/log-path on
+    // the clipboard for pasting into a bug report; "Show Logs" reveals the log
+    // file. Both are frontend-handled (see the menu-event matcher).
+    let copy_diagnostics_item = MenuItem::with_id(
+        app,
+        "menu-copy-diagnostics",
+        "Copy Diagnostics",
+        true,
+        None::<&str>,
+    )?;
+    let reveal_logs_item =
+        MenuItem::with_id(app, "menu-reveal-logs", "Show Logs", true, None::<&str>)?;
+    let help_menu = Submenu::with_items(
+        app,
+        "Help",
+        true,
+        &[&copy_diagnostics_item, &reveal_logs_item],
+    )?;
+
+    let menu = Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu, &help_menu])?;
     app.set_menu(menu)?;
 
     Ok(())
