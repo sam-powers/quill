@@ -10,13 +10,34 @@ use tauri::ipc::Channel;
 use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
+/// Document-like paths Quill is allowed to touch through the general file
+/// commands. These commands are reachable from the frontend (and, via the
+/// `quill://` deep link, indirectly from a hostile web page), so they must not
+/// be general-purpose filesystem primitives. Every legitimate caller operates
+/// on a Markdown document or its `<name>.comments.json` sidecar; confining the
+/// commands to those suffixes means a crafted path can never coax Quill into
+/// reading `/etc/passwd` or overwriting an arbitrary file. The native open/save
+/// dialogs already restrict the user to `.md`, so this loses no real capability.
+fn ensure_allowed_path(path: &str) -> Result<(), String> {
+    let lower = path.to_ascii_lowercase();
+    let allowed =
+        lower.ends_with(".md") || lower.ends_with(".markdown") || lower.ends_with(".comments.json");
+    if allowed {
+        Ok(())
+    } else {
+        Err("Refusing to access a file Quill does not manage".to_string())
+    }
+}
+
 #[tauri::command]
 fn read_file(path: String) -> Result<String, String> {
+    ensure_allowed_path(&path)?;
     std::fs::read_to_string(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn write_file(path: String, content: String) -> Result<(), String> {
+    ensure_allowed_path(&path)?;
     if let Some(parent) = PathBuf::from(&path).parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -25,6 +46,7 @@ fn write_file(path: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_file(path: String) -> Result<(), String> {
+    ensure_allowed_path(&path)?;
     if std::path::Path::new(&path).exists() {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
@@ -356,6 +378,77 @@ mod tests {
 
         assert!(!path1.exists());
         assert!(path2.exists());
+    }
+
+    // --- path policy (ensure_allowed_path) ---
+
+    #[test]
+    fn allowed_paths_accept_documents_and_sidecars() {
+        assert!(ensure_allowed_path("/tmp/notes.md").is_ok());
+        assert!(ensure_allowed_path("/tmp/notes.markdown").is_ok());
+        assert!(ensure_allowed_path("/tmp/notes.comments.json").is_ok());
+        // Case-insensitive: macOS paths are commonly mixed-case.
+        assert!(ensure_allowed_path("/tmp/NOTES.MD").is_ok());
+    }
+
+    #[test]
+    fn disallowed_paths_are_rejected() {
+        assert!(ensure_allowed_path("/etc/passwd").is_err());
+        assert!(ensure_allowed_path("/Users/me/.ssh/id_rsa").is_err());
+        // A bare `.json` is not a Quill sidecar.
+        assert!(ensure_allowed_path("/tmp/secrets.json").is_err());
+        // Suffix games: the real extension is what matters.
+        assert!(ensure_allowed_path("/tmp/notes.md.exe").is_err());
+    }
+
+    #[test]
+    fn confined_commands_refuse_disallowed_paths() {
+        // The commands themselves enforce the policy, not just the helper.
+        assert!(read_file("/etc/passwd".to_string()).is_err());
+        assert!(write_file("/tmp/evil.sh".to_string(), "x".to_string()).is_err());
+        assert!(delete_file("/tmp/evil.sh".to_string()).is_err());
+    }
+
+    // --- deep-link target validation (parse_quill_open / validate_open_target) ---
+
+    #[test]
+    fn deep_link_opens_existing_markdown_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("doc.md");
+        fs::write(&path, "# Doc").unwrap();
+        let url = format!("quill://open?file={}", path.to_str().unwrap());
+        let result = parse_quill_open(&url);
+        // Canonicalized, so compare against the canonical form.
+        let canonical = fs::canonicalize(&path).unwrap();
+        assert_eq!(result, Some(canonical.to_string_lossy().into_owned()));
+    }
+
+    #[test]
+    fn deep_link_rejects_nonexistent_file() {
+        let url = "quill://open?file=/tmp/quill_does_not_exist_xyz.md";
+        assert_eq!(parse_quill_open(url), None);
+    }
+
+    #[test]
+    fn deep_link_rejects_non_markdown_target() {
+        // The classic attack: point the scheme at a sensitive file.
+        let url = "quill://open?file=/etc/passwd";
+        assert_eq!(parse_quill_open(url), None);
+    }
+
+    #[test]
+    fn deep_link_rejects_directory_even_with_md_suffix() {
+        let dir = tempdir().unwrap();
+        let bogus = dir.path().join("notes.md");
+        fs::create_dir(&bogus).unwrap();
+        let url = format!("quill://open?file={}", bogus.to_str().unwrap());
+        assert_eq!(parse_quill_open(&url), None);
+    }
+
+    #[test]
+    fn deep_link_rejects_wrong_host() {
+        let url = "quill://evil?file=/tmp/whatever.md";
+        assert_eq!(parse_quill_open(url), None);
     }
 
     // --- classify_claude_outcome ---
@@ -1590,6 +1683,14 @@ fn update_recent_menu(app: tauri::AppHandle, paths: Vec<String>) -> Result<(), S
 
 fn parse_quill_open(url: &str) -> Option<String> {
     // Expected form: quill://open?file=<urlencoded path>
+    //
+    // This is an OS-level entry point: any web page can fire `quill://open?...`,
+    // so the target is attacker-influenced. We never hand back a raw path. The
+    // decoded path must point at an existing **regular** Markdown file; anything
+    // else (a directory, a device, a non-document, a non-existent path, or a
+    // symlink to one) is rejected so the deep link can only ever open a real
+    // document the user already has on disk — not coax Quill into touching
+    // arbitrary files.
     let rest = url.strip_prefix("quill://")?;
     let (host, query) = rest.split_once('?')?;
     if host != "open" {
@@ -1597,10 +1698,32 @@ fn parse_quill_open(url: &str) -> Option<String> {
     }
     for pair in query.split('&') {
         if let Some(v) = pair.strip_prefix("file=") {
-            return Some(percent_decode(v));
+            let decoded = percent_decode(v);
+            return validate_open_target(&decoded);
         }
     }
     None
+}
+
+/// Accept a deep-link target only if it resolves to an existing regular
+/// Markdown file. Returns the canonicalized path (symlinks resolved) so callers
+/// open the real file, not a redirect.
+fn validate_open_target(path: &str) -> Option<String> {
+    let lower = path.to_ascii_lowercase();
+    if !(lower.ends_with(".md") || lower.ends_with(".markdown")) {
+        return None;
+    }
+    let canonical = std::fs::canonicalize(path).ok()?;
+    if !canonical.is_file() {
+        return None;
+    }
+    // Re-check the suffix on the canonical path: a symlink could end in `.md`
+    // while pointing at something else.
+    let canon_lower = canonical.to_string_lossy().to_ascii_lowercase();
+    if !(canon_lower.ends_with(".md") || canon_lower.ends_with(".markdown")) {
+        return None;
+    }
+    Some(canonical.to_string_lossy().into_owned())
 }
 
 fn percent_decode(s: &str) -> String {
