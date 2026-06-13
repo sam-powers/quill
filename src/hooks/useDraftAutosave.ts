@@ -1,6 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { DraftFile } from '../types';
+import {
+  sanitizeComments,
+  sanitizeSuggestions,
+  sanitizeAISession,
+  sanitizeContextFolder,
+} from '../utils/annotationValidation';
 
 const AUTOSAVE_INTERVAL_MS = 5000;
 
@@ -24,14 +30,30 @@ interface UseDraftAutosaveReturn {
   deleteDraft: () => Promise<void>;
 }
 
-function isValidDraft(raw: unknown): raw is DraftFile {
-  if (typeof raw !== 'object' || raw === null) return false;
-  const d = raw as Partial<DraftFile>;
-  return (
-    d.version === 1 &&
-    typeof d.content === 'string' &&
-    (d.filePath === null || typeof d.filePath === 'string')
-  );
+/**
+ * Validate and sanitize a parsed draft. The draft is JSON from disk that may
+ * have been truncated by the very crash it exists to recover from, so we check
+ * the envelope (version + content + filePath) and then sanitize the annotation
+ * payload through the same rules the sidecar uses — a recovered draft must not
+ * carry positions that throw inside the editor any more than a sidecar can.
+ * Returns a clean DraftFile, or null if the envelope is unusable.
+ */
+function sanitizeDraft(raw: unknown): DraftFile | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const d = raw as Record<string, unknown>;
+  if (d.version !== 1) return null;
+  if (typeof d.content !== 'string') return null;
+  if (d.filePath !== null && typeof d.filePath !== 'string') return null;
+  return {
+    version: 1,
+    savedAt: typeof d.savedAt === 'string' ? d.savedAt : new Date().toISOString(),
+    filePath: d.filePath,
+    content: d.content,
+    comments: sanitizeComments(d.comments),
+    suggestions: sanitizeSuggestions(d.suggestions),
+    aiSession: sanitizeAISession(d.aiSession) ?? null,
+    contextFolder: sanitizeContextFolder(d.contextFolder) ?? null,
+  };
 }
 
 /**
@@ -91,7 +113,7 @@ export function useDraftAutosave({
       const raw = await invoke<string | null>('read_draft');
       if (!raw) return null;
       const parsed: unknown = JSON.parse(raw);
-      return isValidDraft(parsed) ? parsed : null;
+      return sanitizeDraft(parsed);
     } catch {
       return null;
     }
