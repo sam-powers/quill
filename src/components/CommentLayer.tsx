@@ -257,8 +257,21 @@ export default function CommentLayer({
     rafRef.current = requestAnimationFrame(reflow);
   }, [comments, trackedChanges, showResolved, zoom, reflow]);
 
+  // The comment column has no scrollbar of its own — cards are translated by
+  // the editor's scrollTop. So a wheel gesture over the column would otherwise
+  // do nothing; forward it to the editor's scroll area so the document (and
+  // the cards with it) scroll as expected.
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    const scrollArea = editorRef.current?.view.dom.closest('.editor-scroll-area');
+    if (scrollArea) scrollArea.scrollTop += e.deltaY;
+  }, []);
+
   return (
-    <div className="comment-layer" ref={containerRef as React.RefObject<HTMLDivElement>}>
+    <div
+      className="comment-layer"
+      ref={containerRef as React.RefObject<HTMLDivElement>}
+      onWheel={handleWheel}
+    >
       <button className="review-doc-btn" onClick={onReviewDocument}>
         ✨ Review full document
       </button>

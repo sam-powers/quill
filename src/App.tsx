@@ -289,7 +289,12 @@ export default function App() {
     addClaudeComment,
   });
 
-  // Re-render on scroll so button top tracks live coordsAtPos
+  // Re-render on scroll so the comment column tracks the document (cards are
+  // translated by scrollTop) and the add-comment button tracks coordsAtPos.
+  // Keyed on `editor` so the listener attaches once the editor subtree has
+  // mounted `.editor-scroll-area` — with an empty dep array the query could
+  // run before the element existed, leaving scrollTop stuck at 0 (cards never
+  // move on scroll).
   useEffect(() => {
     const el = scrollAreaRef.current?.querySelector('.editor-scroll-area');
     if (!el) return;
@@ -298,8 +303,10 @@ export default function App() {
       setScrollTop((el as HTMLElement).scrollTop);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
+    // Sync once on attach in case the document is already scrolled.
+    setScrollTop((el as HTMLElement).scrollTop);
     return () => el.removeEventListener('scroll', onScroll);
-  }, []);
+  }, [editor]);
 
   // Re-render once after a zoom change so the add-comment button re-reads
   // coordsAtPos: the render that applies the new zoom still measures the old
@@ -806,13 +813,24 @@ export default function App() {
   );
 
   // Resolving hides the card (unless "Show resolved" is on), so it also
-  // drops the focus rather than leaving an outline on a vanished card.
+  // drops the focus rather than leaving an outline on a vanished card. The
+  // in-text mark is re-stamped resolved so its highlight fades to a dotted
+  // underline instead of staying lit.
   const handleResolveComment = useCallback(
     (commentId: string) => {
       resolveComment(commentId);
+      editor?.commands.setCommentResolved(commentId, true);
       clearActiveIf('comment', commentId);
     },
-    [resolveComment, clearActiveIf],
+    [resolveComment, editor, clearActiveIf],
+  );
+
+  const handleUnresolveComment = useCallback(
+    (commentId: string) => {
+      unresolveComment(commentId);
+      editor?.commands.setCommentResolved(commentId, false);
+    },
+    [unresolveComment, editor],
   );
 
   const handleActivateComment = useCallback(
@@ -1019,7 +1037,7 @@ export default function App() {
           onCancelAIReply={claudeReply.cancel}
           onOpenSessionPicker={() => setPickerOpen(true)}
           onResolve={handleResolveComment}
-          onUnresolve={unresolveComment}
+          onUnresolve={handleUnresolveComment}
           onDelete={handleDeleteComment}
           onActivate={handleActivateComment}
           onActivateSuggestion={handleActivateSuggestion}

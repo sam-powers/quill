@@ -829,6 +829,20 @@ test('resolving a comment hides it from the default view', async ({ page }) => {
   await expect(page.locator('.show-resolved-btn')).toBeVisible();
 });
 
+test('resolving a comment drops its in-text highlight', async ({ page }) => {
+  const { editor } = await setup(page);
+  await page.keyboard.type('hello');
+  await selectAll(page);
+  await addCommentViaPlusButton(page, 'todo');
+  await expect(editor.locator('mark.comment-active')).toHaveCount(1);
+
+  await page.locator('.comment-resolve-btn').click();
+  await page.waitForTimeout(150);
+
+  await expect(editor.locator('mark.comment-active')).toHaveCount(0);
+  await expect(editor.locator('mark.comment-resolved')).toHaveCount(1);
+});
+
 test('show-resolved button reveals resolved comments', async ({ page }) => {
   await setup(page);
   await page.keyboard.type('hello');

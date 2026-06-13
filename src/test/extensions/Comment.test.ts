@@ -87,6 +87,74 @@ describe('CommentMark extension', () => {
     });
   });
 
+  describe('setCommentResolved', () => {
+    it('re-stamps the mark resolved attr to true', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
+
+      editor.commands.setCommentResolved('c-001', true);
+
+      const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
+      expect(marks.length).toBeGreaterThan(0);
+      expect(marks.every((m) => m.resolved === true)).toBe(true);
+    });
+
+    it('re-stamps the mark resolved attr back to false', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
+      editor.commands.setCommentResolved('c-001', true);
+
+      editor.commands.setCommentResolved('c-001', false);
+
+      const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
+      expect(marks.every((m) => m.resolved === false)).toBe(true);
+    });
+
+    it('only re-stamps the targeted commentId', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
+      editor.chain().setTextSelection({ from: 7, to: 12 }).setComment('c-002').run();
+
+      editor.commands.setCommentResolved('c-001', true);
+
+      const marks = getCommentMarks(editor);
+      expect(marks.filter((m) => m.commentId === 'c-001').every((m) => m.resolved)).toBe(true);
+      expect(marks.filter((m) => m.commentId === 'c-002').every((m) => !m.resolved)).toBe(true);
+    });
+
+    it('keeps the mark on the text so resolved comments can still re-anchor', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
+      const before = getCommentMarks(editor).filter((m) => m.commentId === 'c-001').length;
+
+      editor.commands.setCommentResolved('c-001', true);
+
+      const after = getCommentMarks(editor).filter((m) => m.commentId === 'c-001').length;
+      expect(after).toBe(before);
+    });
+
+    it('is a no-op when the commentId does not exist', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
+
+      editor.commands.setCommentResolved('nonexistent', true);
+
+      const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
+      expect(marks.every((m) => m.resolved === false)).toBe(true);
+    });
+
+    it('renders a resolved comment with class comment-resolved', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.chain().setTextSelection({ from: 1, to: 2 }).setComment('c-001').run();
+
+      editor.commands.setCommentResolved('c-001', true);
+
+      const html = editor.getHTML();
+      expect(html).toContain('comment-mark comment-resolved');
+      expect(html).toContain('data-resolved="true"');
+    });
+  });
+
   describe('HTML rendering', () => {
     it('renders an unresolved comment with class comment-active', () => {
       editor = makeEditor('<p>Hello world</p>');
