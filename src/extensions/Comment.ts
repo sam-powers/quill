@@ -5,6 +5,7 @@ declare module '@tiptap/core' {
     comment: {
       setComment: (commentId: string) => ReturnType;
       unsetComment: (commentId: string) => ReturnType;
+      setCommentResolved: (commentId: string, resolved: boolean) => ReturnType;
     };
   }
 }
@@ -60,6 +61,28 @@ export const CommentMark = Mark.create({
             node.marks.forEach((mark) => {
               if (mark.type.name === this.name && mark.attrs.commentId === commentId) {
                 tr.removeMark(pos, pos + node.nodeSize, mark.type);
+              }
+            });
+          });
+          dispatch(tr);
+          return true;
+        },
+      // Re-stamp the mark's `resolved` attr so the in-text highlight follows
+      // the card's resolved state (dotted underline vs. highlighted). The mark
+      // stays on the text either way, so "Show resolved" can still re-anchor.
+      setCommentResolved:
+        (commentId: string, resolved: boolean) =>
+        ({ state, dispatch }) => {
+          if (!dispatch) return true;
+          const { tr, doc } = state;
+          const markType = state.schema.marks[this.name];
+          doc.descendants((node, pos) => {
+            node.marks.forEach((mark) => {
+              if (mark.type.name === this.name && mark.attrs.commentId === commentId) {
+                const from = pos;
+                const to = pos + node.nodeSize;
+                tr.removeMark(from, to, markType);
+                tr.addMark(from, to, markType.create({ ...mark.attrs, resolved }));
               }
             });
           });
