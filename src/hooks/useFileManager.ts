@@ -3,19 +3,32 @@ import { invoke } from '@tauri-apps/api/core';
 import type { SidecarFile, Comment, Suggestion, AISessionBinding } from '../types';
 import { sidecarPath } from '../utils/sidecarPath';
 import { basename } from '../utils/path';
+import {
+  sanitizeComments,
+  sanitizeSuggestions,
+  sanitizeAISession,
+  sanitizeContextFolder,
+} from '../utils/annotationValidation';
 
 function emptySidecar(): SidecarFile {
   return { version: 2, comments: [], suggestions: [] };
 }
 
+/**
+ * Build a trusted SidecarFile from the raw parsed JSON. The sidecar sits on disk
+ * next to the document and may be hand-edited, corrupted, or supplied by another
+ * party, so every field is validated rather than trusted: malformed comments /
+ * suggestions are dropped (not fatal) and annotation positions are coerced to
+ * sane integers so they can't throw inside the editor. See annotationValidation.
+ */
 function normalizeSidecar(raw: unknown): SidecarFile {
-  const parsed = raw as Partial<SidecarFile> & { version?: number };
+  const parsed = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   return {
     version: 2,
-    comments: parsed.comments ?? [],
-    suggestions: parsed.suggestions ?? [],
-    aiSession: parsed.aiSession,
-    contextFolder: parsed.contextFolder,
+    comments: sanitizeComments(parsed.comments),
+    suggestions: sanitizeSuggestions(parsed.suggestions),
+    aiSession: sanitizeAISession(parsed.aiSession),
+    contextFolder: sanitizeContextFolder(parsed.contextFolder),
   };
 }
 
