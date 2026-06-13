@@ -1088,8 +1088,11 @@ fn resolve_claude_binary() -> Result<PathBuf, String> {
     if let Ok(output) = Command::new("which").arg("claude").output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Ok(PathBuf::from(path));
+            let candidate = PathBuf::from(&path);
+            // Only trust the result if it actually names an existing file — a
+            // stray line of output should never be handed to Command::new.
+            if !path.is_empty() && candidate.is_file() {
+                return Ok(candidate);
             }
         }
     }
@@ -1118,10 +1121,13 @@ fn resolve_claude_binary() -> Result<PathBuf, String> {
         }
     }
 
-    // 3. Ask a login shell (sources the user's profile → full PATH).
+    // 3. Ask a login shell (sources the user's profile → full PATH). Use a
+    //    non-interactive login shell (`-lc`, not `-lic`): we want the profile's
+    //    PATH, not the side effects of interactive-only rc blocks, and `-c`
+    //    keeps it to the single `command -v` we asked for.
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
     if let Ok(output) = Command::new(&shell)
-        .arg("-lic")
+        .arg("-lc")
         .arg("command -v claude")
         .output()
     {
@@ -1134,8 +1140,11 @@ fn resolve_claude_binary() -> Result<PathBuf, String> {
                 .map(str::trim)
                 .find(|l| !l.is_empty())
             {
-                if !path.is_empty() {
-                    return Ok(PathBuf::from(path));
+                let candidate = PathBuf::from(path);
+                // Same guard as the other resolution paths: only return a real
+                // executable file, never an arbitrary line of shell output.
+                if candidate.is_file() {
+                    return Ok(candidate);
                 }
             }
         }
