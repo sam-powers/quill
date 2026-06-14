@@ -117,6 +117,30 @@ describe('TrackChanges extension', () => {
       expect(hasMarkOfType(editor, 'tracked_insert')).toBe(false);
       expect(hasMarkOfType(editor, 'tracked_delete')).toBe(false);
     });
+
+    it('reports a single contiguous change when its run is split across text nodes', () => {
+      // Insert a tracked run, then bold part of it. Bold splits the text node in
+      // two while both halves keep the same tracked_insert id — the exact
+      // multi-node shape getTrackedChanges merges. It must still surface one
+      // change whose range spans the whole run, not two fragments.
+      editor.commands.insertContentAt(7, 'beautiful ');
+      editor.chain().setTextSelection({ from: 7, to: 11 }).toggleBold().run();
+
+      // Two adjacent text nodes now carry the run: "beau" (bold) + "tiful ".
+      const insertNodes: string[] = [];
+      editor.state.doc.descendants((node) => {
+        if (node.isText && node.marks.some((m) => m.type.name === 'tracked_insert')) {
+          insertNodes.push(node.text ?? '');
+        }
+      });
+      expect(insertNodes.length).toBeGreaterThan(1);
+
+      const changes = getTrackedChanges(editor);
+      const inserts = changes.filter((c) => c.operation === 'insert');
+      expect(inserts).toHaveLength(1);
+      expect(inserts[0].text).toBe('beautiful ');
+      expect(inserts[0].to - inserts[0].from).toBe('beautiful '.length);
+    });
   });
 
   describe('acceptChange', () => {

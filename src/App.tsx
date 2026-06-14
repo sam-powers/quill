@@ -557,42 +557,12 @@ export default function App() {
   // the accelerators and emits an event per item; we map each to the same
   // handler the in-app shortcuts use. In a non-Tauri context (plain dev server)
   // the listeners simply never fire.
-  useEffect(() => {
-    const unlisteners: (() => void)[] = [];
-    (async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const wire = async (event: string, fn: () => void) => {
-          unlisteners.push(await listen(event, () => fn()));
-        };
-        await wire('menu-new', handleNew);
-        await wire('menu-open', handleOpen);
-        await wire('menu-save', () => void handleSave());
-        await wire('menu-save-as', () => void handleSaveAs());
-        await wire('menu-quit', handleQuit);
-        await wire('menu-clear-recent', () => void syncRecentMenu(clearRecentFiles()));
-        await wire('menu-copy-diagnostics', handleCopyDiagnostics);
-        await wire('menu-reveal-logs', handleRevealLogs);
-        // Open Recent replaces the document, so it runs through the same
-        // unsaved-changes guard as File → Open and deep links.
-        unlisteners.push(
-          await listen<string>('menu-open-recent', (e) => {
-            const path = e.payload;
-            if (!path) return;
-            guardDirty(() => {
-              void (async () => {
-                const result = await openFilePath(path);
-                if (result) loadFileResult(result);
-              })();
-            });
-          }),
-        );
-      } catch {
-        // Non-Tauri context — no native menu.
-      }
-    })();
-    return () => unlisteners.forEach((u) => u());
-  }, [
+  //
+  // The menu handlers re-create on most edits (they close over filePath,
+  // comments, etc.), so we hold the current set in a ref — refreshed every
+  // render — and register the Tauri listeners exactly once. Otherwise every
+  // keystroke would tear down and re-`listen` all of them.
+  const menuHandlersRef = useRef({
     handleNew,
     handleOpen,
     handleSave,
@@ -603,7 +573,59 @@ export default function App() {
     guardDirty,
     openFilePath,
     loadFileResult,
-  ]);
+  });
+  menuHandlersRef.current = {
+    handleNew,
+    handleOpen,
+    handleSave,
+    handleSaveAs,
+    handleQuit,
+    handleCopyDiagnostics,
+    handleRevealLogs,
+    guardDirty,
+    openFilePath,
+    loadFileResult,
+  };
+
+  useEffect(() => {
+    const unlisteners: (() => void)[] = [];
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const wire = async (event: string, fn: () => void) => {
+          unlisteners.push(await listen(event, () => fn()));
+        };
+        const h = menuHandlersRef.current;
+        await wire('menu-new', () => h.handleNew());
+        await wire('menu-open', () => h.handleOpen());
+        await wire('menu-save', () => void h.handleSave());
+        await wire('menu-save-as', () => void h.handleSaveAs());
+        await wire('menu-quit', () => h.handleQuit());
+        await wire('menu-clear-recent', () => void syncRecentMenu(clearRecentFiles()));
+        await wire('menu-copy-diagnostics', () => void h.handleCopyDiagnostics());
+        await wire('menu-reveal-logs', () => void h.handleRevealLogs());
+        // Open Recent replaces the document, so it runs through the same
+        // unsaved-changes guard as File → Open and deep links.
+        unlisteners.push(
+          await listen<string>('menu-open-recent', (e) => {
+            const path = e.payload;
+            if (!path) return;
+            const cur = menuHandlersRef.current;
+            cur.guardDirty(() => {
+              void (async () => {
+                const result = await cur.openFilePath(path);
+                if (result) cur.loadFileResult(result);
+              })();
+            });
+          }),
+        );
+      } catch {
+        // Non-Tauri context — no native menu.
+      }
+    })();
+    return () => unlisteners.forEach((u) => u());
+    // Registered once: handlers are read live through menuHandlersRef.
+  }, []);
 
   // Fill File → Open Recent from the persisted list once on launch; after
   // this, every add/clear re-syncs the menu itself.

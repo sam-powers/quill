@@ -14,26 +14,22 @@ export function useSuggestions(): UseSuggestionsReturn {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
 
   const acceptSuggestion = useCallback((id: string) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'accepted' as const } : s)),
-    );
+    setSuggestions((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'accepted' } : s)));
   }, []);
 
   const rejectSuggestion = useCallback((id: string) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: 'rejected' as const } : s)),
-    );
+    setSuggestions((prev) => prev.map((s) => (s.id === id ? { ...s, status: 'rejected' } : s)));
   }, []);
 
   const acceptAllSuggestions = useCallback(() => {
     setSuggestions((prev) =>
-      prev.map((s) => (s.status === 'pending' ? { ...s, status: 'accepted' as const } : s)),
+      prev.map((s) => (s.status === 'pending' ? { ...s, status: 'accepted' } : s)),
     );
   }, []);
 
   const rejectAllSuggestions = useCallback(() => {
     setSuggestions((prev) =>
-      prev.map((s) => (s.status === 'pending' ? { ...s, status: 'rejected' as const } : s)),
+      prev.map((s) => (s.status === 'pending' ? { ...s, status: 'rejected' } : s)),
     );
   }, []);
 

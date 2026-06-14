@@ -380,8 +380,15 @@ export function getTrackedChanges(editor: {
         });
       } else {
         const existing = changes.get(id)!;
-        existing.to = Math.max(existing.to, pos + node.nodeSize);
-        existing.text += node.text ?? '';
+        // A tracked id is minted across a single contiguous run, so the next
+        // node carrying it should abut the range we've accumulated. Extend only
+        // when it does; a non-adjacent node sharing the id would otherwise make
+        // `to` span unmarked text in between (a malformed-doc case we don't want
+        // to silently widen the range for).
+        if (pos === existing.to) {
+          existing.to = pos + node.nodeSize;
+          existing.text += node.text ?? '';
+        }
       }
     }
   });
