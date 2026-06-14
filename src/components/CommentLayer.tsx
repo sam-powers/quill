@@ -87,34 +87,30 @@ function stackCards(cards: CardPosition[], heightFor: (id: string) => number): C
   return result;
 }
 
-function getAnchorTop(editor: Editor, commentId: string): number | null {
+// Top of an annotation's in-text highlight, in scroll-area coordinates. Comments
+// and tracked changes anchor identically — they differ only in the data
+// attribute the highlight carries.
+function getAnchorTopBy(editor: Editor, attr: 'data-comment-id' | 'data-change-id', id: string) {
   try {
-    const view = editor.view;
-    const dom = view.dom;
-    const el = dom.querySelector(`[data-comment-id="${commentId}"]`);
+    const dom = editor.view.dom;
+    const el = dom.querySelector(`[${attr}="${id}"]`);
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const containerRect = dom.closest('.editor-scroll-area')?.getBoundingClientRect();
+    const scrollArea = dom.closest('.editor-scroll-area');
+    const containerRect = scrollArea?.getBoundingClientRect();
     if (!containerRect) return null;
-    return rect.top - containerRect.top + (dom.closest('.editor-scroll-area')?.scrollTop ?? 0);
+    return rect.top - containerRect.top + (scrollArea?.scrollTop ?? 0);
   } catch {
     return null;
   }
 }
 
+function getAnchorTop(editor: Editor, commentId: string): number | null {
+  return getAnchorTopBy(editor, 'data-comment-id', commentId);
+}
+
 function getChangeAnchorTop(editor: Editor, changeId: string): number | null {
-  try {
-    const view = editor.view;
-    const dom = view.dom;
-    const el = dom.querySelector(`[data-change-id="${changeId}"]`);
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    const containerRect = dom.closest('.editor-scroll-area')?.getBoundingClientRect();
-    if (!containerRect) return null;
-    return rect.top - containerRect.top + (dom.closest('.editor-scroll-area')?.scrollTop ?? 0);
-  } catch {
-    return null;
-  }
+  return getAnchorTopBy(editor, 'data-change-id', changeId);
 }
 
 export default function CommentLayer({

@@ -613,6 +613,17 @@ struct ChildRegistry(Mutex<HashMap<String, Arc<ChildHandle>>>);
 #[derive(Default)]
 struct PendingDeepLink(Mutex<Option<String>>);
 
+/// Lock a `Mutex` without panicking on poisoning. These mutexes guard plain data
+/// (a process handle, a registry map, a pending path) that stays valid even if a
+/// thread panicked while holding the lock, so recovering the inner guard is the
+/// right call — far better than propagating a panic out of a process-spawn or
+/// deep-link path.
+fn lock_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn claude_projects_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or_else(|| "Could not resolve home directory".to_string())?;
     Ok(home.join(".claude").join("projects"))
@@ -1270,11 +1281,7 @@ fn spawn_claude_resume(
     });
     {
         let registry = app.state::<ChildRegistry>();
-        registry
-            .0
-            .lock()
-            .unwrap()
-            .insert(token.clone(), handle.clone());
+        lock_recover(&registry.0).insert(token.clone(), handle.clone());
     }
 
     let token_for_thread = token.clone();
@@ -1295,7 +1302,12 @@ fn spawn_claude_resume(
             }
             let parsed: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
-                Err(_) => continue,
+                Err(e) => {
+                    // A non-JSON line in the stream-json output is unexpected;
+                    // skip it but leave a breadcrumb rather than vanishing it.
+                    log::debug!("skipping non-JSON line from claude stream: {e}");
+                    continue;
+                }
             };
             // Terminal result line: { type: "result", is_error: bool,
             //                         subtype: "...", result: "..." }
@@ -1343,7 +1355,7 @@ fn spawn_claude_resume(
         let _ = BufReader::new(stderr).read_to_string(&mut stderr_buf);
 
         let status = {
-            let mut child_lock = handle.child.lock().unwrap();
+            let mut child_lock = lock_recover(&handle.child);
             child_lock.as_mut().and_then(|c| c.wait().ok())
         };
 
@@ -1372,7 +1384,7 @@ fn spawn_claude_resume(
 
         // Remove from registry on natural completion.
         let registry = app_for_thread.state::<ChildRegistry>();
-        registry.0.lock().unwrap().remove(&token_for_thread);
+        lock_recover(&registry.0).remove(&token_for_thread);
     });
 
     Ok(token)
@@ -1383,10 +1395,10 @@ fn cancel_claude_resume(
     cancel_token: String,
     registry: State<'_, ChildRegistry>,
 ) -> Result<(), String> {
-    let entry = registry.0.lock().unwrap().remove(&cancel_token);
+    let entry = lock_recover(&registry.0).remove(&cancel_token);
     if let Some(handle) = entry {
         handle.cancelled.store(true, Ordering::SeqCst);
-        if let Some(child) = handle.child.lock().unwrap().as_mut() {
+        if let Some(child) = lock_recover(&handle.child).as_mut() {
             let _ = child.kill();
         }
     }
@@ -1517,7 +1529,7 @@ pub fn run() {
                         // Buffer for cold start (frontend not yet listening) and
                         // also emit for the warm-start case where it is.
                         if let Some(pending) = handle.try_state::<PendingDeepLink>() {
-                            *pending.0.lock().unwrap() = Some(path.clone());
+                            *lock_recover(&pending.0) = Some(path.clone());
                         }
                         let _ = handle.emit("deep-link-open", path);
                     }
@@ -1769,7 +1781,7 @@ fn handle_deep_link(url: String) -> Result<Option<String>, String> {
 /// `deep-link-open` emit was dropped because no listener existed yet.
 #[tauri::command]
 fn take_pending_deep_link(pending: State<'_, PendingDeepLink>) -> Result<Option<String>, String> {
-    Ok(pending.0.lock().unwrap().take())
+    Ok(lock_recover(&pending.0).take())
 }
 
 /// Reports that a real native menu is present. The frontend uses this to yield
