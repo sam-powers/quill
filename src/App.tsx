@@ -439,6 +439,23 @@ export default function App() {
     return saveFile(getMarkdown(), comments, suggestions, aiSession, contextFolder);
   }, [filePath, saveFile, comments, suggestions, aiSession, contextFolder, handleSaveAs]);
 
+  // Export to PDF is print-to-PDF: the `@media print` rules in App.css strip
+  // the chrome and the track-changes/comment markup, leaving a clean copy of
+  // the document, and the OS print dialog offers "Save as PDF". We set
+  // document.title first so that dialog defaults the filename to the doc's
+  // name instead of "Quill"; it's restored after the dialog returns
+  // (window.print blocks synchronously until then).
+  const handleExportPdf = useCallback(() => {
+    const docName = filePath ? basename(filePath).replace(/\.md$/i, '') : 'Untitled';
+    const prevTitle = document.title;
+    document.title = docName;
+    try {
+      window.print();
+    } finally {
+      document.title = prevTitle;
+    }
+  }, [filePath]);
+
   const performOpen = useCallback(async () => {
     const result = await openFile();
     if (!result) return;
@@ -567,6 +584,7 @@ export default function App() {
     handleOpen,
     handleSave,
     handleSaveAs,
+    handleExportPdf,
     handleQuit,
     handleCopyDiagnostics,
     handleRevealLogs,
@@ -579,6 +597,7 @@ export default function App() {
     handleOpen,
     handleSave,
     handleSaveAs,
+    handleExportPdf,
     handleQuit,
     handleCopyDiagnostics,
     handleRevealLogs,
@@ -600,6 +619,7 @@ export default function App() {
         await wire('menu-open', () => h.handleOpen());
         await wire('menu-save', () => void h.handleSave());
         await wire('menu-save-as', () => void h.handleSaveAs());
+        await wire('menu-export-pdf', () => h.handleExportPdf());
         await wire('menu-quit', () => h.handleQuit());
         await wire('menu-clear-recent', () => void syncRecentMenu(clearRecentFiles()));
         await wire('menu-copy-diagnostics', () => void h.handleCopyDiagnostics());
@@ -687,6 +707,14 @@ export default function App() {
           handleNew();
           return;
         }
+        if (e.key === 'p' && !e.shiftKey && !e.altKey) {
+          // Export to PDF (print-to-PDF). In Tauri the native menu owns this
+          // accelerator; here we intercept the browser's default print so the
+          // doc title is set first, matching the native path.
+          e.preventDefault();
+          handleExportPdf();
+          return;
+        }
       }
 
       // Cmd+F opens find & replace (re-focus when already open is handled by
@@ -715,7 +743,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave, handleSaveAs, handleOpen, handleNew, hasNativeMenu]);
+  }, [handleSave, handleSaveAs, handleOpen, handleNew, handleExportPdf, hasNativeMenu]);
 
   useEffect(() => {
     if (!editor) return;

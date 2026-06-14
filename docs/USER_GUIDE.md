@@ -26,6 +26,7 @@ Each time Quill starts it checks whether a newer version has been released. If t
 ## The basics
 
 - **Open** a Markdown (`.md`) file with **File → Open…** (or Cmd/Ctrl+O), **save** with Cmd/Ctrl+S. **File → Open Recent** lists your last ten documents.
+- **Export to PDF** with **File → Export to PDF…** (or Cmd/Ctrl+P) to share a clean copy with someone who doesn't have Quill. The PDF shows the finished document — any pending suggestions appear as accepted, and comment highlights and track-changes marks are left out. Pick **Save as PDF** in the print dialog that opens.
 - Quill remembers your window size and position between launches, and misspellings get the usual red squiggle from your system spellchecker.
 - The toolbar has the usual formatting: bold, italic, headings, lists, quotes.
 - **Find & replace** with Cmd/Ctrl+F: type to highlight matches, Enter / Shift+Enter to step through them, **Replace** / **All** to swap them out, Esc to close. In Suggesting mode a replacement shows up as a tracked change like any other edit.

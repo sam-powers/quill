@@ -1845,3 +1845,102 @@ del.track-delete {
   background: var(--color-border);
   border-radius: 2px;
 }
+
+/* ── Print / Export to PDF ──────────────────────────────────────────
+   "Export to PDF" is print-to-PDF (handleExportPdf → window.print()), so
+   these rules define the printed artifact: a *clean copy* of the document.
+   We strip all app chrome, collapse the on-screen scroll/zoom containers so
+   the document reflows naturally across paper pages, and render the
+   track-changes / comment markup as if every suggestion were accepted —
+   insertions become plain text, deletions and comment highlights vanish.
+   The browser's print pipeline (macOS "Save as PDF") owns pagination. */
+@media print {
+  /* US Letter with comfortable margins; the editor's own page padding is
+     reset below so geometry isn't doubled. */
+  @page {
+    size: letter;
+    margin: 0.75in;
+  }
+
+  /* Hide every piece of chrome and any transient overlay. */
+  .toolbar,
+  .footer,
+  .comment-layer,
+  .find-bar,
+  .update-banner,
+  .add-comment-btn,
+  .add-comment-compose,
+  .app-modal-overlay {
+    display: none !important;
+  }
+
+  /* Collapse the on-screen layout: the app is height:100vh / overflow:hidden
+     with an internal scroll area, none of which makes sense on paper. Let
+     content flow and paginate. */
+  html,
+  body,
+  .app,
+  .workspace,
+  .editor-scroll-area {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  .editor-scroll-area {
+    padding: 0 !important;
+    align-items: stretch !important;
+  }
+
+  /* Drop the screen zoom and the dashed page-break guide lines; the page is
+     the paper now. Full-width, no page card border or rounded corners. */
+  .editor-page-zoom-wrapper {
+    zoom: 1 !important;
+  }
+  .editor-page {
+    width: auto !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  .ProseMirror {
+    min-height: 0 !important;
+    background-image: none !important;
+    color: #000 !important;
+  }
+
+  /* Clean copy of the suggesting-mode markup: accept insertions (plain text),
+     drop deletions entirely, and remove comment / find / focus highlights. */
+  ins.track-insert {
+    background: none !important;
+    color: inherit !important;
+    text-decoration: none !important;
+    padding: 0 !important;
+  }
+  del.track-delete {
+    display: none !important;
+  }
+  mark.comment-mark,
+  .ProseMirror .pending-comment,
+  .ProseMirror .find-match,
+  .ProseMirror .find-match-active,
+  .ProseMirror .annotation-focus {
+    background: none !important;
+    border: none !important;
+    text-decoration: none !important;
+    padding: 0 !important;
+  }
+
+  /* Avoid orphaned headings and split code/quote blocks where possible. */
+  .ProseMirror h1,
+  .ProseMirror h2,
+  .ProseMirror h3 {
+    break-after: avoid;
+  }
+  .ProseMirror pre,
+  .ProseMirror blockquote,
+  .ProseMirror table {
+    break-inside: avoid;
+  }
+}

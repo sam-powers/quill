@@ -1513,6 +1513,7 @@ pub fn run() {
                         | "menu-open"
                         | "menu-save"
                         | "menu-save-as"
+                        | "menu-export-pdf"
                         | "menu-quit"
                         | "menu-clear-recent"
                         | "menu-reveal-logs"
@@ -1598,6 +1599,13 @@ fn build_menu(app: &tauri::AppHandle, recent: &[String]) -> Result<(), Box<dyn s
         true,
         Some("CmdOrCtrl+Shift+S"),
     )?;
+    let export_pdf_item = MenuItem::with_id(
+        app,
+        "menu-export-pdf",
+        "Export to PDF…",
+        true,
+        Some("CmdOrCtrl+P"),
+    )?;
 
     // Open Recent: one item per remembered path (id carries the full path so
     // the click handler can forward it), then Clear Menu — disabled when there
@@ -1638,6 +1646,8 @@ fn build_menu(app: &tauri::AppHandle, recent: &[String]) -> Result<(), Box<dyn s
             &PredefinedMenuItem::separator(app)?,
             &save_item,
             &save_as_item,
+            &PredefinedMenuItem::separator(app)?,
+            &export_pdf_item,
         ],
     )?;
 
