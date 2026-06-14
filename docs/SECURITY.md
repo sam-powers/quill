@@ -6,6 +6,16 @@ to be read by an engineer reviewing the app, not just to list mitigations. Where
 we left something unchanged, the rationale is here too, because a defensible
 non-fix is part of the posture.
 
+## Reporting a vulnerability
+
+If you find a security issue in Quill, please report it privately rather than
+opening a public issue, so it can be fixed before it's widely known. Email
+**sapowers16@gmail.com** with a description and, where possible, steps to
+reproduce. You'll get an acknowledgement, and we'll work the fix and any
+disclosure timing with you. There is no bug-bounty program — this is a small
+open-source project — but reports are genuinely welcome and credited if you'd
+like.
+
 ## What Quill is, in security terms
 
 Quill is a local, single-user macOS desktop app (Tauri 2 + a React/TypeScript
