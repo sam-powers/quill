@@ -1,7 +1,7 @@
 {
   "name": "quill",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "The document editor that can hold a conversation — tracked changes, inline comments, and Claude replies for plain Markdown files.",
   "author": "Sam Powers <samueldarinpowers@gmail.com>",
   "license": "Apache-2.0",
