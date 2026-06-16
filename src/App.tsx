@@ -519,20 +519,37 @@ export default function App() {
   // installed.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
+    // The effect may be torn down before the async registration resolves
+    // (StrictMode double-mount). Track that so we don't leak a listener that
+    // outlives the effect — a stale second listener would also call
+    // preventDefault and leave the window unclosable with no dialog.
+    let cancelled = false;
     (async () => {
       try {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         const win = getCurrentWindow();
-        unlisten = await win.onCloseRequested((event) => {
-          if (!isDirtyRef.current) return;
-          event.preventDefault();
-          setDiscardGuard({ run: () => void win.destroy() });
+        const off = await win.onCloseRequested((event) => {
+          if (!isDirtyRef.current) return; // Clean: let the close proceed.
+          // Dirty: hold the close and route through the Save dialog. If
+          // anything here throws, the catch below destroys the window rather
+          // than leaving the X dead (prevented close, no dialog shown).
+          try {
+            event.preventDefault();
+            setDiscardGuard({ run: () => void win.destroy() });
+          } catch {
+            void win.destroy();
+          }
         });
+        if (cancelled) off();
+        else unlisten = off;
       } catch {
         // Non-Tauri context.
       }
     })();
-    return () => unlisten?.();
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, []);
 
   // Help → Copy Diagnostics: gather version/OS/log-path from the backend and
@@ -901,14 +918,14 @@ export default function App() {
     [deleteComment, editor, clearActiveIf],
   );
 
-  // Resolving hides the card (unless "Show resolved" is on), so it also
-  // drops the focus rather than leaving an outline on a vanished card. The
-  // in-text mark is re-stamped resolved so its highlight fades to a dotted
-  // underline instead of staying lit.
+  // Resolving hides the card (unless "Show resolved" is on), so it also drops
+  // the focus rather than leaving an outline on a vanished card. The in-text
+  // mark is removed entirely so the text goes plain — a resolved comment leaves
+  // no highlight behind (the stored from/to lets unresolve put it back).
   const handleResolveComment = useCallback(
     (commentId: string) => {
       resolveComment(commentId);
-      editor?.commands.setCommentResolved(commentId, true);
+      editor?.commands.unsetComment(commentId);
       clearActiveIf('comment', commentId);
     },
     [resolveComment, editor, clearActiveIf],
@@ -917,9 +934,12 @@ export default function App() {
   const handleUnresolveComment = useCallback(
     (commentId: string) => {
       unresolveComment(commentId);
-      editor?.commands.setCommentResolved(commentId, false);
+      // Re-stamp the mark from the comment's stored range — resolve removed it,
+      // so there's no live mark to read the range from anymore.
+      const comment = comments.find((c) => c.id === commentId);
+      if (comment) editor?.commands.setCommentRange(commentId, comment.from, comment.to);
     },
-    [unresolveComment, editor],
+    [unresolveComment, editor, comments],
   );
 
   const handleActivateComment = useCallback(

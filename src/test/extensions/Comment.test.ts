@@ -87,71 +87,68 @@ describe('CommentMark extension', () => {
     });
   });
 
-  describe('setCommentResolved', () => {
-    it('re-stamps the mark resolved attr to true', () => {
+  // Resolving a comment removes its mark outright (handled in App via
+  // `unsetComment`), so the resolved text carries no highlight at all. The
+  // only re-stamp path is unresolve, which restores the mark over the
+  // comment's stored range via `setCommentRange`.
+  describe('resolve removes the mark', () => {
+    it('leaves no comment mark after unsetComment (resolve path)', () => {
       editor = makeEditor('<p>Hello world</p>');
       editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
 
-      editor.commands.setCommentResolved('c-001', true);
+      editor.commands.unsetComment('c-001');
 
       const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
-      expect(marks.length).toBeGreaterThan(0);
-      expect(marks.every((m) => m.resolved === true)).toBe(true);
+      expect(marks).toHaveLength(0);
     });
 
-    it('re-stamps the mark resolved attr back to false', () => {
-      editor = makeEditor('<p>Hello world</p>');
-      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
-      editor.commands.setCommentResolved('c-001', true);
-
-      editor.commands.setCommentResolved('c-001', false);
-
-      const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
-      expect(marks.every((m) => m.resolved === false)).toBe(true);
-    });
-
-    it('only re-stamps the targeted commentId', () => {
-      editor = makeEditor('<p>Hello world</p>');
-      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
-      editor.chain().setTextSelection({ from: 7, to: 12 }).setComment('c-002').run();
-
-      editor.commands.setCommentResolved('c-001', true);
-
-      const marks = getCommentMarks(editor);
-      expect(marks.filter((m) => m.commentId === 'c-001').every((m) => m.resolved)).toBe(true);
-      expect(marks.filter((m) => m.commentId === 'c-002').every((m) => !m.resolved)).toBe(true);
-    });
-
-    it('keeps the mark on the text so resolved comments can still re-anchor', () => {
-      editor = makeEditor('<p>Hello world</p>');
-      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
-      const before = getCommentMarks(editor).filter((m) => m.commentId === 'c-001').length;
-
-      editor.commands.setCommentResolved('c-001', true);
-
-      const after = getCommentMarks(editor).filter((m) => m.commentId === 'c-001').length;
-      expect(after).toBe(before);
-    });
-
-    it('is a no-op when the commentId does not exist', () => {
-      editor = makeEditor('<p>Hello world</p>');
-      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
-
-      editor.commands.setCommentResolved('nonexistent', true);
-
-      const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
-      expect(marks.every((m) => m.resolved === false)).toBe(true);
-    });
-
-    it('renders a resolved comment with class comment-resolved', () => {
+    it('renders no comment-mark span once resolved', () => {
       editor = makeEditor('<p>Hello world</p>');
       editor.chain().setTextSelection({ from: 1, to: 2 }).setComment('c-001').run();
 
-      editor.commands.setCommentResolved('c-001', true);
+      editor.commands.unsetComment('c-001');
+
+      expect(editor.getHTML()).not.toContain('comment-mark');
+    });
+  });
+
+  describe('setCommentRange (unresolve re-stamp)', () => {
+    it('re-applies a comment mark over an explicit range', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      // Resolve first (mark gone), then unresolve via the stored range.
+      editor.chain().setTextSelection({ from: 1, to: 6 }).setComment('c-001').run();
+      editor.commands.unsetComment('c-001');
+      expect(getCommentMarks(editor).filter((m) => m.commentId === 'c-001')).toHaveLength(0);
+
+      editor.commands.setCommentRange('c-001', 1, 6);
+
+      const marks = getCommentMarks(editor).filter((m) => m.commentId === 'c-001');
+      expect(marks.length).toBeGreaterThan(0);
+      expect(marks.every((m) => m.resolved === false)).toBe(true);
+    });
+
+    it('re-stamped marks render as active, not resolved', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.commands.setCommentRange('c-001', 1, 6);
 
       const html = editor.getHTML();
-      expect(html).toContain('comment-mark comment-resolved');
-      expect(html).toContain('data-resolved="true"');
+      expect(html).toContain('comment-mark comment-active');
+      expect(html).toContain('data-resolved="false"');
+    });
+
+    it('clamps an out-of-bounds range instead of throwing', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      // `to` past the end of the doc — clamped, not crashed.
+      expect(() => editor.commands.setCommentRange('c-001', 1, 9999)).not.toThrow();
+      expect(getCommentMarks(editor).filter((m) => m.commentId === 'c-001').length).toBeGreaterThan(
+        0,
+      );
+    });
+
+    it('is a no-op for a zero-width range', () => {
+      editor = makeEditor('<p>Hello world</p>');
+      editor.commands.setCommentRange('c-001', 3, 3);
+      expect(getCommentMarks(editor).filter((m) => m.commentId === 'c-001')).toHaveLength(0);
     });
   });
 

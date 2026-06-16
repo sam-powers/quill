@@ -5,7 +5,9 @@ declare module '@tiptap/core' {
     comment: {
       setComment: (commentId: string) => ReturnType;
       unsetComment: (commentId: string) => ReturnType;
-      setCommentResolved: (commentId: string, resolved: boolean) => ReturnType;
+      /** Re-stamp a comment mark over an explicit range (used to restore the
+       *  in-text highlight when a resolved comment is unresolved). */
+      setCommentRange: (commentId: string, from: number, to: number) => ReturnType;
     };
   }
 }
@@ -67,26 +69,22 @@ export const CommentMark = Mark.create({
           dispatch(tr);
           return true;
         },
-      // Re-stamp the mark's `resolved` attr so the in-text highlight follows
-      // the card's resolved state (dotted underline vs. highlighted). The mark
-      // stays on the text either way, so "Show resolved" can still re-anchor.
-      setCommentResolved:
-        (commentId: string, resolved: boolean) =>
+      // Re-stamp a comment mark over an explicit range. Resolving a comment
+      // strips its mark (the text goes plain); unresolving puts it back, using
+      // the comment's stored from/to since the mark — the usual source of the
+      // live range — is no longer in the document.
+      setCommentRange:
+        (commentId: string, from: number, to: number) =>
         ({ state, dispatch }) => {
           if (!dispatch) return true;
           const { tr, doc } = state;
           const markType = state.schema.marks[this.name];
-          doc.descendants((node, pos) => {
-            node.marks.forEach((mark) => {
-              if (mark.type.name === this.name && mark.attrs.commentId === commentId) {
-                const from = pos;
-                const to = pos + node.nodeSize;
-                tr.removeMark(from, to, markType);
-                tr.addMark(from, to, markType.create({ ...mark.attrs, resolved }));
-              }
-            });
-          });
-          dispatch(tr);
+          const clampedFrom = Math.max(0, Math.min(from, doc.content.size));
+          const clampedTo = Math.max(clampedFrom, Math.min(to, doc.content.size));
+          if (clampedTo > clampedFrom) {
+            tr.addMark(clampedFrom, clampedTo, markType.create({ commentId, resolved: false }));
+            dispatch(tr);
+          }
           return true;
         },
     };
