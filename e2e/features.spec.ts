@@ -839,8 +839,11 @@ test('resolving a comment drops its in-text highlight', async ({ page }) => {
   await page.locator('.comment-resolve-btn').click();
   await page.waitForTimeout(150);
 
+  // Resolving strips the comment mark outright — no highlight of any kind
+  // remains in the text (active or resolved).
   await expect(editor.locator('mark.comment-active')).toHaveCount(0);
-  await expect(editor.locator('mark.comment-resolved')).toHaveCount(1);
+  await expect(editor.locator('mark.comment-resolved')).toHaveCount(0);
+  await expect(editor.locator('mark[data-comment-id]')).toHaveCount(0);
 });
 
 test('show-resolved button reveals resolved comments', async ({ page }) => {
