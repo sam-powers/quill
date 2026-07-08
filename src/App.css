@@ -166,7 +166,7 @@
   --page-max-width: 816px;
   --page-padding-x: 96px;
   --page-padding-y: 72px;
-  --page-break-gap: 40px;
+  --editor-scroll-gap: 40px;
 
   font-family: var(--font-sans);
   font-size: var(--text-ui);
@@ -623,10 +623,10 @@ body,
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: var(--page-break-gap) var(--space-xl);
+  padding: var(--editor-scroll-gap) var(--space-xl);
   padding-right: calc(var(--comment-panel-width) + var(--space-xl));
   background: var(--color-bg);
-  gap: var(--page-break-gap);
+  gap: var(--editor-scroll-gap);
 }
 
 /* ── Page surface ───────────────────────────────────────────────── */
@@ -646,16 +646,8 @@ body,
 
 .ProseMirror {
   outline: none;
-  /* 8.5×11 at 96dpi = 1056px total; minus 2×72px padding = 912px content per page */
+  /* Layout minimum so an empty document keeps a comfortable page-sized surface */
   min-height: 912px;
-  /* Page break lines: dashed rule every 912px */
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent,
-    transparent calc(912px - 1px),
-    var(--color-border-light) calc(912px - 1px),
-    var(--color-border-light) 912px
-  );
   font-family: var(--font-sans);
   font-size: var(--text-body);
   font-weight: 400;
@@ -1892,8 +1884,8 @@ del.track-delete {
     align-items: stretch !important;
   }
 
-  /* Drop the screen zoom and the dashed page-break guide lines; the page is
-     the paper now. Full-width, no page card border or rounded corners. */
+  /* Drop the screen zoom; the page is the paper now.
+     Full-width, no page card border or rounded corners. */
   .editor-page-zoom-wrapper {
     zoom: 1 !important;
   }
