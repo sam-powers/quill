@@ -11,13 +11,19 @@ Quill is currently available for the Mac. Download the installer from the [lates
 
 ### First launch on a Mac
 
-Quill isn't yet registered with Apple, so the very first time you open it macOS will say it "cannot be opened because the developer cannot be verified."
+Quill isn't yet registered with Apple, so the very first time you open it macOS will say it "cannot be opened because the developer cannot be verified." This is expected — here's how to let it through (you only do this once):
 
-1. Find **Quill** in your **Applications** folder.
-2. **Right-click** (or hold Control and click) the app and choose **Open**.
-3. In the warning dialog, click **Open** again.
+1. Double-click **Quill** in your **Applications** folder. macOS blocks it — click **Done**.
+2. Open the **Apple menu → System Settings**, then click **Privacy & Security** in the sidebar.
+3. Scroll down to the **Security** section. You'll see a line that says **"Quill was blocked to protect your Mac"** with an **Open Anyway** button next to it — click it.
+4. Confirm with Touch ID or your login password, then click **Open** in the last dialog.
 
-You only have to do this once — afterwards Quill opens normally.
+After this, Quill opens normally every time. A few things worth knowing:
+
+- The **Open Anyway** button in step 3 only shows up _after_ you've done step 1, and it stays for about an hour — so do these steps back to back. If you don't see it, try double-clicking Quill again first.
+- If macOS says Quill **"is damaged and can't be opened"**, that's the same "unverified app" block wearing a scarier label. The fix: open the **Terminal** app (Applications → Utilities), paste `xattr -dr com.apple.quarantine /Applications/Quill.app`, press Return, then open Quill normally. (This one command also works instead of steps 1–4 if you prefer.)
+
+> **Why the extra step?** Apple used to let you right-click an app and choose **Open** to get past this. That shortcut was removed in macOS Sequoia (version 15), so the System Settings route above is now the way in — on Sequoia through Tahoe (version 26).
 
 ### Staying up to date
 

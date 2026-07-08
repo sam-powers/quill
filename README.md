@@ -23,7 +23,13 @@ Quill is a free Mac app — no account, nothing to configure. From zero to writi
 
 2. **Install** — open the downloaded `.dmg` and drag **Quill** into your **Applications** folder.
 
-3. **Open it** — Quill isn't code-signed yet, so the first launch takes one extra step: right-click (or Control-click) **Quill** in Applications, choose **Open**, then click **Open** in the warning dialog. Only needed once — afterwards it opens like any other app. (Alternatively: `xattr -dr com.apple.quarantine /Applications/Quill.app`.)
+3. **Open it** — Quill isn't code-signed yet, so the first launch takes a couple of extra clicks (only needed once):
+   1. Double-click **Quill**. macOS blocks it — click **Done** in the "cannot be verified" dialog.
+   2. Open **Apple menu → System Settings → Privacy & Security**, scroll to **Security**, and next to "Quill was blocked…" click **Open Anyway** → authenticate → **Open**.
+
+   (The **Open Anyway** button only appears after you've tried step 1, and stays for about an hour. If macOS instead says Quill is "damaged" — or you'd rather skip the clicks — run `xattr -dr com.apple.quarantine /Applications/Quill.app` in Terminal, then open Quill normally.)
+
+   > The old right-click → **Open** trick no longer works: Apple removed it in macOS Sequoia (15). The steps above are the current flow on Sequoia through Tahoe (26).
 
 4. **Write** — open any Markdown file with **File → Open…** or just start typing. Editing, suggesting mode, and comments all work out of the box; the `@claude` features need one companion tool — see [Setting up `@claude`](#setting-up-claude).
 

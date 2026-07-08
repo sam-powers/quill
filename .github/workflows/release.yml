@@ -10,8 +10,9 @@ name: Release
 # and we don't ship builds that can't deliver the full experience.
 #
 # The macOS bundles are unsigned — no Apple Developer certificate is wired in —
-# so Gatekeeper makes users right-click → Open on first launch. This is
-# documented in the README and the user guide.
+# so on first launch Gatekeeper makes users approve the app via System Settings →
+# Privacy & Security → Open Anyway (the right-click → Open shortcut was removed in
+# macOS Sequoia). This is documented in the README and the user guide.
 
 on:
   push:
@@ -66,6 +67,8 @@ jobs:
           releaseDraft: true
           releaseBody: |
             Download the installer for your platform from the assets below.
-            macOS builds are unsigned — right-click the app and choose **Open**
-            on first launch. See the README's install section for details.
+            macOS builds are unsigned. On first launch, double-click the app,
+            click **Done**, then open **System Settings → Privacy & Security**
+            and click **Open Anyway** (the right-click → Open shortcut was
+            removed in macOS Sequoia). See the README's install section for details.
           args: ${{ matrix.args }}
