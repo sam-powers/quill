@@ -1533,6 +1533,13 @@ pub fn run() {
                             *lock_recover(&pending.0) = Some(path.clone());
                         }
                         let _ = handle.emit("deep-link-open", path);
+                        // Surface the window in case the app is running hidden,
+                        // minimized, or in the background — best-effort.
+                        if let Some(win) = handle.get_webview_window("main") {
+                            let _ = win.show();
+                            let _ = win.unminimize();
+                            let _ = win.set_focus();
+                        }
                     }
                 }
             });

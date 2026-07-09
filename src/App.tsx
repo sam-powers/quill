@@ -631,16 +631,18 @@ export default function App() {
         const wire = async (event: string, fn: () => void) => {
           unlisteners.push(await listen(event, () => fn()));
         };
-        const h = menuHandlersRef.current;
-        await wire('menu-new', () => h.handleNew());
-        await wire('menu-open', () => h.handleOpen());
-        await wire('menu-save', () => void h.handleSave());
-        await wire('menu-save-as', () => void h.handleSaveAs());
-        await wire('menu-export-pdf', () => h.handleExportPdf());
-        await wire('menu-quit', () => h.handleQuit());
+        await wire('menu-new', () => menuHandlersRef.current.handleNew());
+        await wire('menu-open', () => menuHandlersRef.current.handleOpen());
+        await wire('menu-save', () => void menuHandlersRef.current.handleSave());
+        await wire('menu-save-as', () => void menuHandlersRef.current.handleSaveAs());
+        await wire('menu-export-pdf', () => menuHandlersRef.current.handleExportPdf());
+        await wire('menu-quit', () => menuHandlersRef.current.handleQuit());
         await wire('menu-clear-recent', () => void syncRecentMenu(clearRecentFiles()));
-        await wire('menu-copy-diagnostics', () => void h.handleCopyDiagnostics());
-        await wire('menu-reveal-logs', () => void h.handleRevealLogs());
+        await wire(
+          'menu-copy-diagnostics',
+          () => void menuHandlersRef.current.handleCopyDiagnostics(),
+        );
+        await wire('menu-reveal-logs', () => void menuHandlersRef.current.handleRevealLogs());
         // Open Recent replaces the document, so it runs through the same
         // unsaved-changes guard as File → Open and deep links.
         unlisteners.push(
