@@ -6,6 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Quill is a Tauri 2 + React 19 desktop app — a Markdown editor with track-changes and inline comments, similar to Google Docs suggesting mode. The frontend is React/TypeScript built with Vite; the backend is a thin Rust/Tauri layer that exposes file I/O and native dialogs to the frontend.
 
+## Knowledge Stores
+
+Before starting work in a documented area, and when finishing a fix worth remembering, consult and grow these:
+
+- **`docs/solutions/`** — compounded learnings from solved problems (bug fixes and knowledge notes), each with YAML frontmatter for searchability. Check here first when debugging something that feels familiar; add an entry (via `/ce-compound`) after a non-trivial fix so the next occurrence is fast.
+- **`CONCEPTS.md`** — project glossary of domain terms. Read it to ground in the vocabulary; extend it when a new term surfaces that a new engineer would need defined.
+
 ## Commands
 
 ```bash
