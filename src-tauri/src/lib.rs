@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -519,6 +519,71 @@ mod tests {
             Ok(path) => assert!(path.is_absolute() || path.exists()),
             Err(msg) => assert!(msg.contains("claude")),
         }
+    }
+
+    // --- build_child_path ---
+
+    #[test]
+    fn child_path_includes_claude_binary_dir() {
+        let path = build_child_path(
+            Path::new("/Users/x/.nvm/versions/node/v20/bin/claude"),
+            None,
+            None,
+            "/Users/x",
+        );
+        assert!(path
+            .split(':')
+            .any(|d| d == "/Users/x/.nvm/versions/node/v20/bin"));
+    }
+
+    #[test]
+    fn child_path_puts_claude_dir_first() {
+        let path = build_child_path(
+            Path::new("/opt/claude/bin/claude"),
+            Some("/login/a:/login/b"),
+            Some("/inherited/c"),
+            "/Users/x",
+        );
+        assert_eq!(path.split(':').next(), Some("/opt/claude/bin"));
+    }
+
+    #[test]
+    fn child_path_dedups_preserving_first_occurrence() {
+        // The same dir appears as the claude dir, in the login PATH, and in the
+        // inherited PATH — it must survive exactly once, at its earliest slot.
+        let path = build_child_path(
+            Path::new("/shared/bin/claude"),
+            Some("/shared/bin:/login/only"),
+            Some("/shared/bin:/inherited/only"),
+            "/Users/x",
+        );
+        let count = path.split(':').filter(|d| *d == "/shared/bin").count();
+        assert_eq!(count, 1);
+        assert_eq!(path.split(':').next(), Some("/shared/bin"));
+    }
+
+    #[test]
+    fn child_path_has_well_known_dirs_without_login_or_inherited() {
+        // Worst case: a packaged .app with neither a login-shell PATH nor an
+        // inherited PATH still gets a usable PATH from the fallbacks.
+        let path = build_child_path(Path::new("/somewhere/claude"), None, None, "/Users/x");
+        let dirs: Vec<&str> = path.split(':').collect();
+        for expected in [
+            "/Users/x/.local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ] {
+            assert!(dirs.contains(&expected), "missing {expected} in {path}");
+        }
+        // No empty segments leak through.
+        assert!(
+            !dirs.iter().any(|d| d.is_empty()),
+            "empty segment in {path}"
+        );
     }
 
     // --- collect_context_files ---
@@ -1087,13 +1152,80 @@ fn read_claude_session_preview(jsonl_path: String) -> Result<SessionPreview, Str
     })
 }
 
+/// Unique marker printed before `$PATH` so we can recover it from stdout even
+/// when an interactive shell interleaves profile/rc banners around our output.
+const QUILL_PATH_SENTINEL: &str = "___QUILL_PATH___";
+
+/// Run a script in the user's interactive login shell and return captured
+/// stdout on success.
+///
+/// `-ilc`, not `-lc`: **interactive** so `.zshrc` / `.bashrc` are sourced (nvm,
+/// fnm, Homebrew, and Volta commonly put their PATH lines there, and a
+/// non-interactive login shell skips those files entirely), **login** so profile
+/// files are sourced too, and `-c` to run exactly the one script we pass. A
+/// shell that errors or can't be spawned yields `None` so callers fall through.
+fn login_shell_stdout(script: &str) -> Option<String> {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+    let output = Command::new(&shell).arg("-ilc").arg(script).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Ask the interactive login shell where `claude` resolves. Returns the file if
+/// it names a real executable, else `None`.
+fn claude_from_login_shell() -> Option<PathBuf> {
+    // A login shell may print profile banners; take the *last* non-empty line,
+    // which is `command -v`'s output, then only trust a real file — never an
+    // arbitrary line of shell output handed to Command::new.
+    let stdout = login_shell_stdout("command -v claude")?;
+    let path = stdout
+        .lines()
+        .map(str::trim)
+        .rev()
+        .find(|l| !l.is_empty())?;
+    let candidate = PathBuf::from(path);
+    candidate.is_file().then_some(candidate)
+}
+
+/// Read the user's full PATH as their interactive login shell sees it. Printed
+/// behind a sentinel so a trailing rc/profile banner can't clobber the value
+/// (a plain `echo $PATH` would be ambiguous against interleaved output).
+fn login_shell_path() -> Option<String> {
+    let script = format!("printf '{QUILL_PATH_SENTINEL}%s\\n' \"$PATH\"");
+    let stdout = login_shell_stdout(&script)?;
+    stdout
+        .lines()
+        .find_map(|l| l.strip_prefix(QUILL_PATH_SENTINEL))
+        .map(str::to_string)
+        .filter(|p| !p.is_empty())
+}
+
+/// The `~/.nvm/versions/node/*/bin` directories, newest version first. Shared by
+/// the install-dir scan and the child-PATH fallback so both agree on ordering.
+fn nvm_node_bin_dirs(home: &str) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = std::fs::read_dir(format!("{home}/.nvm/versions/node"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path().join("bin"))
+        .collect();
+    dirs.sort();
+    dirs.reverse(); // newest version first
+    dirs
+}
+
 /// Locate the `claude` CLI. A bundled macOS app inherits a minimal PATH from
 /// launchd (often without the user's nvm / Homebrew dirs), so a bare
 /// `Command::new("claude")` fails with "No such file or directory" even though
 /// the binary is installed. We try, in order: (1) the existing PATH (works in
-/// `tauri dev` / from a terminal), (2) a list of common install locations, and
-/// (3) a login shell, which sources the user's profile and knows the real PATH.
-/// Returns an absolute path to the binary, or an error explaining the search.
+/// `tauri dev` / from a terminal), (2) an interactive login shell, which sources
+/// the user's profile and rc files and knows the *configured* CLI, and (3) a
+/// list of common install locations as a last-resort fallback. The shell is
+/// tried before the hardcoded scan so a stale global install can't preempt the
+/// binary the user actually configured. Returns an absolute path, or an error
+/// explaining the search.
 fn resolve_claude_binary() -> Result<PathBuf, String> {
     // 1. Already on PATH?
     if let Ok(output) = Command::new("which").arg("claude").output() {
@@ -1108,7 +1240,15 @@ fn resolve_claude_binary() -> Result<PathBuf, String> {
         }
     }
 
-    // 2. Common install locations (nvm picks the highest-versioned node dir).
+    // 2. Ask the interactive login shell (sources profile + rc → the user's
+    //    *configured* claude). This runs before the hardcoded scan so a stale
+    //    global install can't win over what the user set up.
+    if let Some(candidate) = claude_from_login_shell() {
+        return Ok(candidate);
+    }
+
+    // 3. Common install locations, last resort (nvm picks the highest-versioned
+    //    node dir). Only reached when neither PATH nor the shell resolved it.
     let home = std::env::var("HOME").unwrap_or_default();
     let mut candidates: Vec<PathBuf> = vec![
         PathBuf::from(format!("{home}/.claude/local/claude")),
@@ -1116,48 +1256,14 @@ fn resolve_claude_binary() -> Result<PathBuf, String> {
         PathBuf::from("/opt/homebrew/bin/claude"),
         PathBuf::from("/usr/local/bin/claude"),
     ];
-    let nvm_bin = PathBuf::from(format!("{home}/.nvm/versions/node"));
-    if let Ok(entries) = std::fs::read_dir(&nvm_bin) {
-        let mut versions: Vec<PathBuf> = entries
-            .flatten()
-            .map(|e| e.path().join("bin/claude"))
-            .collect();
-        versions.sort();
-        versions.reverse(); // newest version first
-        candidates.extend(versions);
-    }
+    candidates.extend(
+        nvm_node_bin_dirs(&home)
+            .into_iter()
+            .map(|d| d.join("claude")),
+    );
     for candidate in &candidates {
         if candidate.is_file() {
             return Ok(candidate.clone());
-        }
-    }
-
-    // 3. Ask a login shell (sources the user's profile → full PATH). Use a
-    //    non-interactive login shell (`-lc`, not `-lic`): we want the profile's
-    //    PATH, not the side effects of interactive-only rc blocks, and `-c`
-    //    keeps it to the single `command -v` we asked for.
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
-    if let Ok(output) = Command::new(&shell)
-        .arg("-lc")
-        .arg("command -v claude")
-        .output()
-    {
-        if output.status.success() {
-            // A login shell may print profile banners; take the last non-empty
-            // line, which is `command -v`'s output.
-            if let Some(path) = String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .rev()
-                .map(str::trim)
-                .find(|l| !l.is_empty())
-            {
-                let candidate = PathBuf::from(path);
-                // Same guard as the other resolution paths: only return a real
-                // executable file, never an arbitrary line of shell output.
-                if candidate.is_file() {
-                    return Ok(candidate);
-                }
-            }
         }
     }
 
@@ -1166,6 +1272,62 @@ fn resolve_claude_binary() -> Result<PathBuf, String> {
          and make sure it's on your PATH, then restart Quill."
             .to_string(),
     )
+}
+
+/// Build the PATH to hand the spawned `claude` process. A packaged `.app`
+/// launched from Finder inherits launchd's minimal PATH, which lacks Node — and
+/// `claude` is a `#!/usr/bin/env node` script, so it dies with `env: node: No
+/// such file or directory`. We assemble a richer PATH, highest priority first,
+/// de-duplicated preserving first occurrence, colon-joined:
+///   (a) the directory the resolved `claude` binary lives in (its sibling `node`
+///       lives here for nvm/Homebrew layouts),
+///   (b) the login-shell PATH (rc files' toolchain lines),
+///   (c) the already-inherited PATH,
+///   (d) well-known fallback dirs so even the worst case (b and c both empty)
+///       still yields a usable PATH.
+/// Pure so it can be unit-tested without touching the environment.
+fn build_child_path(
+    claude_bin: &Path,
+    login_shell_path: Option<&str>,
+    inherited_path: Option<&str>,
+    home: &str,
+) -> String {
+    let mut ordered: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut push = |dir: String| {
+        // First occurrence wins, preserving priority; empty segments dropped.
+        if !dir.is_empty() && seen.insert(dir.clone()) {
+            ordered.push(dir);
+        }
+    };
+
+    // (a) the resolved binary's own directory.
+    if let Some(parent) = claude_bin.parent() {
+        push(parent.to_string_lossy().into_owned());
+    }
+    // (b) login-shell PATH, then (c) inherited PATH, in order.
+    for source in [login_shell_path, inherited_path].into_iter().flatten() {
+        for entry in source.split(':') {
+            push(entry.to_string());
+        }
+    }
+    // (d) well-known fallbacks.
+    for dir in nvm_node_bin_dirs(home) {
+        push(dir.to_string_lossy().into_owned());
+    }
+    for dir in [
+        format!("{home}/.local/bin"),
+        "/opt/homebrew/bin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/bin".to_string(),
+        "/bin".to_string(),
+        "/usr/sbin".to_string(),
+        "/sbin".to_string(),
+    ] {
+        push(dir);
+    }
+
+    ordered.join(":")
 }
 
 /// Decide whether a finished `claude` invocation succeeded, and if not, produce
@@ -1253,8 +1415,20 @@ fn spawn_claude_resume(
     if let Some(dir) = add_dir.as_deref().filter(|d| !d.is_empty()) {
         cmd.arg("--add-dir").arg(dir);
     }
+    // A packaged .app launched from Finder inherits launchd's minimal PATH,
+    // which lacks Node — and `claude` is a node script, so it would die with
+    // `env: node: No such file or directory`. Give the child a PATH that
+    // includes the binary's own dir plus the user's real toolchain dirs.
+    let home = std::env::var("HOME").unwrap_or_default();
+    let child_path = build_child_path(
+        &claude_bin,
+        login_shell_path().as_deref(),
+        std::env::var("PATH").ok().as_deref(),
+        &home,
+    );
     cmd.arg(&prompt)
         .current_dir(&cwd)
+        .env("PATH", &child_path)
         // If Quill was launched from a shell with an API key exported, the CLI
         // would silently bill that key instead of the user's `claude` login.
         .env_remove("ANTHROPIC_API_KEY")
