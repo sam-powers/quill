@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { buildPrompt, detectScope, splitVisible } from '../../hooks/useClaudeReply';
+import {
+  buildPrompt,
+  classifyReplyError,
+  detectScope,
+  splitVisible,
+} from '../../hooks/useClaudeReply';
 import type { Comment, Reply } from '../../types';
 
 describe('detectScope', () => {
@@ -178,6 +183,90 @@ describe('buildPrompt context folder', () => {
     );
     expect(prompt).toContain('=== REFERENCE FOLDER ===');
     expect(prompt).toContain('- sources.md');
+  });
+});
+
+describe('classifyReplyError', () => {
+  it('classifies session-loss errors as session (retryable, re-link primary)', () => {
+    expect(classifyReplyError('No conversation found for this session')).toEqual({
+      retryable: true,
+      kind: 'session',
+    });
+    expect(classifyReplyError('Invalid session ID')).toEqual({ retryable: true, kind: 'session' });
+    expect(classifyReplyError('session not found')).toEqual({ retryable: true, kind: 'session' });
+  });
+
+  it('classifies auth errors as auth and not retryable', () => {
+    for (const msg of [
+      'Authentication failed',
+      'Unauthorized',
+      'HTTP 401',
+      'Please login again',
+      'Invalid API key',
+      'missing credentials',
+    ]) {
+      expect(classifyReplyError(msg)).toEqual({ retryable: false, kind: 'auth' });
+    }
+  });
+
+  it('classifies transient/API errors as transient (retryable)', () => {
+    for (const msg of [
+      'API Error: something went wrong',
+      'HTTP 429 Too Many Requests',
+      'status 503',
+      'Overloaded',
+      'request timeout',
+      'network unreachable',
+      'rate limit exceeded',
+      'ECONNRESET',
+      'Unsupported parameter: thinking.type',
+    ]) {
+      expect(classifyReplyError(msg)).toEqual({ retryable: true, kind: 'transient' });
+    }
+  });
+
+  it('matches case-insensitively', () => {
+    expect(classifyReplyError('NO CONVERSATION FOUND').kind).toBe('session');
+    expect(classifyReplyError('OVERLOADED').kind).toBe('transient');
+    expect(classifyReplyError('UNAUTHORIZED').kind).toBe('auth');
+  });
+
+  it('orders session before transient when both could match', () => {
+    // A session-loss message that also mentions a timeout must lead with re-link.
+    expect(classifyReplyError('No conversation found (timeout)').kind).toBe('session');
+  });
+
+  it('does not false-match ordinary words (negative control)', () => {
+    // "author" contains "auth" but must NOT classify as auth; a plain sentence
+    // with no error markers is unknown.
+    expect(classifyReplyError('The author revised the document.')).toEqual({
+      retryable: true,
+      kind: 'unknown',
+    });
+  });
+
+  it('anchors the 401 and login auth markers to word boundaries', () => {
+    // A port/line number that merely contains the digits "401", or a hostname
+    // that contains "login" as a substring, must not force a non-retryable auth
+    // verdict onto an otherwise-retryable transient failure.
+    expect(classifyReplyError('connection refused on port 24010')).toEqual({
+      retryable: true,
+      kind: 'unknown',
+    });
+    expect(classifyReplyError('timeout reaching mylogin.internal host')).toEqual({
+      retryable: true,
+      kind: 'transient',
+    });
+    // The real markers still classify as auth.
+    expect(classifyReplyError('server returned 401').kind).toBe('auth');
+    expect(classifyReplyError('please login again').kind).toBe('auth');
+  });
+
+  it('treats empty and whitespace input as unknown without throwing', () => {
+    expect(classifyReplyError('')).toEqual({ retryable: true, kind: 'unknown' });
+    expect(classifyReplyError('   ')).toEqual({ retryable: true, kind: 'unknown' });
+    // @ts-expect-error — guarding the runtime nullish path
+    expect(classifyReplyError(undefined)).toEqual({ retryable: true, kind: 'unknown' });
   });
 });
 

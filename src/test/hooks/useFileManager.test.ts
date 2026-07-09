@@ -6,8 +6,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import { invoke } from '@tauri-apps/api/core';
-import { useFileManager } from '../../hooks/useFileManager';
-import type { Comment } from '../../types';
+import { useFileManager, stripTransientReplyState } from '../../hooks/useFileManager';
+import type { Comment, Reply } from '../../types';
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -194,6 +194,50 @@ describe('useFileManager', () => {
       const written = JSON.parse((sidecarCall![1] as { content: string }).content);
       expect(written.version).toBe(2);
       expect(written.comments).toHaveLength(1);
+    });
+
+    it('strips transient AI replies from the written sidecar', async () => {
+      mockInvoke.mockResolvedValue(undefined);
+      const commentWithReplies: Comment = {
+        ...SAMPLE_COMMENT,
+        replies: [
+          { id: 'u1', author: 'Alice', text: 'nice', createdAt: '', authorKind: 'user' },
+          {
+            id: 'a1',
+            author: 'Claude',
+            text: 'done',
+            createdAt: '',
+            authorKind: 'ai',
+          },
+          { id: 'a2', author: 'Claude', text: '', createdAt: '', authorKind: 'ai', pending: true },
+          {
+            id: 'a3',
+            author: 'Claude',
+            text: 'oops',
+            createdAt: '',
+            authorKind: 'ai',
+            error: 'API Error',
+          },
+        ],
+      };
+      const { result } = renderHook(() => useFileManager());
+      await act(async () => {
+        await result.current.saveFile(
+          'content',
+          [commentWithReplies],
+          [],
+          null,
+          null,
+          '/docs/t.md',
+        );
+      });
+      const sidecarCall = mockInvoke.mock.calls.find(
+        (call) =>
+          call[0] === 'write_file' && (call[1] as { path: string }).path.endsWith('.comments.json'),
+      );
+      const written = JSON.parse((sidecarCall![1] as { content: string }).content);
+      const persisted = written.comments[0].replies.map((r: Reply) => r.id);
+      expect(persisted).toEqual(['u1', 'a1']); // pending a2 + errored a3 dropped
     });
 
     it('does not clobber the sidecar on same-path save when it was corrupt on open', async () => {
@@ -440,5 +484,70 @@ describe('useFileManager', () => {
       });
       expect(result.current.isDirty).toBe(true);
     });
+  });
+});
+
+describe('stripTransientReplyState', () => {
+  const reply = (over: Partial<Reply>): Reply => ({
+    id: 'r',
+    author: 'x',
+    text: 't',
+    createdAt: '',
+    authorKind: 'user',
+    ...over,
+  });
+
+  const commentWith = (replies: Reply[]): Comment => ({ ...SAMPLE_COMMENT, replies });
+
+  it('drops an errored AI reply', () => {
+    const out = stripTransientReplyState([
+      commentWith([reply({ id: 'a', authorKind: 'ai', error: 'API Error' })]),
+    ]);
+    expect(out[0].replies).toEqual([]);
+  });
+
+  it('drops a pending AI reply', () => {
+    const out = stripTransientReplyState([
+      commentWith([reply({ id: 'a', authorKind: 'ai', text: '', pending: true })]),
+    ]);
+    expect(out[0].replies).toEqual([]);
+  });
+
+  it('keeps a finished AI reply', () => {
+    const finished = reply({ id: 'a', authorKind: 'ai', text: 'done' });
+    const out = stripTransientReplyState([commentWith([finished])]);
+    expect(out[0].replies).toEqual([finished]);
+  });
+
+  it('keeps user replies, even pending/errored ones (only AI transient state is stripped)', () => {
+    // pending/error should never appear on a user reply, but the guard is
+    // scoped to authorKind 'ai' — a user reply is retained regardless.
+    const userReplies = [
+      reply({ id: 'u1', text: 'hi' }),
+      reply({ id: 'u2', text: 'yo', pending: true }),
+    ];
+    const out = stripTransientReplyState([commentWith(userReplies)]);
+    expect(out[0].replies).toEqual(userReplies);
+  });
+
+  it('returns the same comment reference when nothing is stripped', () => {
+    const comment = commentWith([
+      reply({ id: 'u1' }),
+      reply({ id: 'a', authorKind: 'ai', text: 'x' }),
+    ]);
+    const out = stripTransientReplyState([comment]);
+    expect(out[0]).toBe(comment); // referential identity preserved — no needless copy
+  });
+
+  it('strips only the transient replies from a mixed thread', () => {
+    const out = stripTransientReplyState([
+      commentWith([
+        reply({ id: 'u1' }),
+        reply({ id: 'a1', authorKind: 'ai', text: 'done' }),
+        reply({ id: 'a2', authorKind: 'ai', text: '', pending: true }),
+        reply({ id: 'a3', authorKind: 'ai', text: 'oops', error: 'boom' }),
+      ]),
+    ]);
+    expect(out[0].replies.map((r) => r.id)).toEqual(['u1', 'a1']);
   });
 });

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import type { Comment, Reply } from '../types';
 import { timeAgo } from '../utils/format';
+import { classifyReplyError } from '../hooks/useClaudeReply';
 
 interface CommentCardProps {
   comment: Comment;
@@ -9,6 +10,7 @@ interface CommentCardProps {
   onReply: (commentId: string, text: string) => void;
   onAIReplyRequest: (commentId: string, userText: string) => void;
   onCancelAIReply: (replyId: string) => void;
+  onRetryAIReply: (replyId: string) => void;
   onOpenSessionPicker: () => void;
   onResolve: (commentId: string) => void;
   onUnresolve: (commentId: string) => void;
@@ -16,13 +18,65 @@ interface CommentCardProps {
   onClick: (commentId: string) => void;
 }
 
+function ReplyErrorActions({
+  message,
+  onRetry,
+  onRelink,
+}: {
+  message: string;
+  onRetry: () => void;
+  onRelink: () => void;
+}) {
+  const { retryable, kind } = classifyReplyError(message);
+  const retryBtn = (
+    <button className="btn-primary" onClick={onRetry}>
+      Retry
+    </button>
+  );
+  const relinkBtn = (primary: boolean) => (
+    <button className={primary ? 'btn-primary' : 'btn-ghost'} onClick={onRelink}>
+      Re-link session…
+    </button>
+  );
+
+  // Which affordances to surface, driven by the classifier:
+  //   auth     → not retryable; re-linking is the only path forward.
+  //   session  → re-link is primary (session is gone), retry as fallback.
+  //   else     → transient/unknown; retry is primary, re-link demoted.
+  let actions: React.ReactNode;
+  if (kind === 'auth') {
+    actions = relinkBtn(true);
+  } else if (kind === 'session') {
+    actions = (
+      <>
+        {relinkBtn(true)}
+        {retryable && (
+          <button className="btn-ghost" onClick={onRetry}>
+            Retry
+          </button>
+        )}
+      </>
+    );
+  } else {
+    actions = (
+      <>
+        {retryable && retryBtn}
+        {relinkBtn(false)}
+      </>
+    );
+  }
+  return <div className="comment-reply-error-actions">{actions}</div>;
+}
+
 function ReplyView({
   reply,
   onCancel,
+  onRetry,
   onRelink,
 }: {
   reply: Reply;
   onCancel: () => void;
+  onRetry: () => void;
   onRelink: () => void;
 }) {
   const isAI = reply.authorKind === 'ai';
@@ -38,9 +92,7 @@ function ReplyView({
       {reply.error ? (
         <div className="comment-reply-error">
           <p>{reply.error}</p>
-          <button className="btn-ghost" onClick={onRelink}>
-            Re-link session…
-          </button>
+          <ReplyErrorActions message={reply.error} onRetry={onRetry} onRelink={onRelink} />
         </div>
       ) : (
         <>
@@ -69,6 +121,7 @@ export default function CommentCard({
   onReply,
   onAIReplyRequest,
   onCancelAIReply,
+  onRetryAIReply,
   onOpenSessionPicker,
   onResolve,
   onUnresolve,
@@ -156,6 +209,7 @@ export default function CommentCard({
           key={reply.id}
           reply={reply}
           onCancel={() => onCancelAIReply(reply.id)}
+          onRetry={() => onRetryAIReply(reply.id)}
           onRelink={onOpenSessionPicker}
         />
       ))}

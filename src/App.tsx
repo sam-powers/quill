@@ -11,7 +11,7 @@ import FindBar from './components/FindBar';
 import AppModal from './components/AppModal';
 import ReviewModal from './components/ReviewModal';
 import UpdateBanner from './components/UpdateBanner';
-import { useFileManager } from './hooks/useFileManager';
+import { useFileManager, stripTransientReplyState } from './hooks/useFileManager';
 import { useDraftAutosave } from './hooks/useDraftAutosave';
 import type { DraftSnapshot } from './hooks/useDraftAutosave';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
@@ -148,6 +148,7 @@ export default function App() {
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
+    retryAIReply,
   } = useComments();
   const { suggestions, setSuggestions } = useSuggestions();
 
@@ -160,7 +161,10 @@ export default function App() {
     (): DraftSnapshot => ({
       filePath,
       content: getDocMarkdown(),
-      comments,
+      // draft.json is a second on-disk persistence path, so it needs the same
+      // transient-reply strip the sidecar gets — otherwise a crash mid-stream
+      // recovers a stuck spinner / dead-Retry card the fresh hook can't drive.
+      comments: stripTransientReplyState(comments),
       suggestions,
       aiSession,
       contextFolder,
@@ -244,6 +248,7 @@ export default function App() {
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
+    retryAIReply,
     getDocMarkdown,
     getRangeTexts,
     applyTrackedEdits,
@@ -1144,6 +1149,7 @@ export default function App() {
           onReply={(id, text) => addReply(id, text, AUTHOR)}
           onAIReplyRequest={handleAIReplyRequest}
           onCancelAIReply={claudeReply.cancel}
+          onRetryAIReply={claudeReply.retry}
           onOpenSessionPicker={() => setPickerOpen(true)}
           onResolve={handleResolveComment}
           onUnresolve={handleUnresolveComment}

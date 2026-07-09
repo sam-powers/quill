@@ -17,6 +17,7 @@ interface CommentLayerProps {
   onReply: (commentId: string, text: string) => void;
   onAIReplyRequest: (commentId: string, userText: string) => void;
   onCancelAIReply: (replyId: string) => void;
+  onRetryAIReply: (replyId: string) => void;
   onOpenSessionPicker: () => void;
   onResolve: (commentId: string) => void;
   onUnresolve: (commentId: string) => void;
@@ -125,6 +126,7 @@ export default function CommentLayer({
   onReply,
   onAIReplyRequest,
   onCancelAIReply,
+  onRetryAIReply,
   onOpenSessionPicker,
   onResolve,
   onUnresolve,
@@ -294,6 +296,7 @@ export default function CommentLayer({
               onReply={onReply}
               onAIReplyRequest={onAIReplyRequest}
               onCancelAIReply={onCancelAIReply}
+              onRetryAIReply={onRetryAIReply}
               onOpenSessionPicker={onOpenSessionPicker}
               onResolve={onResolve}
               onUnresolve={onUnresolve}

@@ -15,6 +15,22 @@ function emptySidecar(): SidecarFile {
 }
 
 /**
+ * Drop transient AI-reply state before serialization. A pending or errored AI
+ * reply is in-flight UI state — the request either never completed or failed —
+ * so it must never reach the on-disk sidecar, where it would resurrect a stuck
+ * spinner or a stale error on the next open. User replies and finished AI
+ * replies are kept untouched. Returns a new array; inputs are not mutated.
+ */
+export function stripTransientReplyState(comments: Comment[]): Comment[] {
+  return comments.map((c) => {
+    const kept = c.replies.filter(
+      (r) => !(r.authorKind === 'ai' && (r.pending || r.error !== undefined)),
+    );
+    return kept.length === c.replies.length ? c : { ...c, replies: kept };
+  });
+}
+
+/**
  * Build a trusted SidecarFile from the raw parsed JSON. The sidecar sits on disk
  * next to the document and may be hand-edited, corrupted, or supplied by another
  * party, so every field is validated rather than trusted: malformed comments /
@@ -162,7 +178,10 @@ export function useFileManager(
       contextFolder: string | null,
     ) => {
       const scPath = sidecarPath(path);
-      if (comments.length === 0 && suggestions.length === 0 && !aiSession && !contextFolder) {
+      // Never persist in-flight AI replies (pending/errored) — strip them first
+      // so an empty doc with only a failed reply still collapses to no sidecar.
+      const cleanComments = stripTransientReplyState(comments);
+      if (cleanComments.length === 0 && suggestions.length === 0 && !aiSession && !contextFolder) {
         // Clean up empty sidecar
         try {
           await invoke('delete_file', { path: scPath });
@@ -173,7 +192,7 @@ export function useFileManager(
       }
       const sidecar: SidecarFile = {
         version: 2,
-        comments,
+        comments: cleanComments,
         suggestions,
         ...(aiSession ? { aiSession } : {}),
         ...(contextFolder ? { contextFolder } : {}),

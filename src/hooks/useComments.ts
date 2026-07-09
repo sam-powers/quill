@@ -14,6 +14,7 @@ interface UseCommentsReturn {
   appendAIReplyChunk: (commentId: string, replyId: string, chunk: string) => void;
   finishAIReply: (commentId: string, replyId: string) => void;
   failAIReply: (commentId: string, replyId: string, message: string) => void;
+  retryAIReply: (commentId: string, replyId: string) => void;
 }
 
 export function useComments(): UseCommentsReturn {
@@ -121,6 +122,24 @@ export function useComments(): UseCommentsReturn {
     );
   }, []);
 
+  // Reset an existing (errored) AI reply in place so a retry reuses the same
+  // entry rather than appending a new one — clears the error, resets the
+  // streamed text, and marks it pending again. Unknown ids are a no-op.
+  const retryAIReply = useCallback((commentId: string, replyId: string) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId ? { ...r, pending: true, error: undefined, text: '' } : r,
+              ),
+            }
+          : c,
+      ),
+    );
+  }, []);
+
   return {
     comments,
     setComments,
@@ -133,5 +152,6 @@ export function useComments(): UseCommentsReturn {
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
+    retryAIReply,
   };
 }

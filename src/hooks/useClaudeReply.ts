@@ -19,6 +19,7 @@ interface UseClaudeReplyOptions {
   appendAIReplyChunk: (commentId: string, replyId: string, chunk: string) => void;
   finishAIReply: (commentId: string, replyId: string) => void;
   failAIReply: (commentId: string, replyId: string, message: string) => void;
+  retryAIReply: (commentId: string, replyId: string) => void;
   getDocMarkdown: () => string;
   /** Read the current document text for a comment's range + paragraph. */
   getRangeTexts: (comment: Comment) => RangeTexts;
@@ -51,6 +52,75 @@ export function detectScope(userText: string): EditScope {
   return 'highlight';
 }
 
+/** How a failed @claude reply should be recovered from, derived from its message. */
+export type ReplyErrorKind = 'transient' | 'session' | 'auth' | 'unknown';
+
+export interface ReplyErrorClass {
+  retryable: boolean;
+  kind: ReplyErrorKind;
+}
+
+// Ordered specific-before-broad: a message like "No conversation found (timeout)"
+// must classify as `session` (re-link is the fix), not `transient`. Each rule's
+// `test` runs against a lowercased copy of the message, so patterns are lowercase.
+const REPLY_ERROR_RULES: {
+  kind: ReplyErrorKind;
+  retryable: boolean;
+  test: (m: string) => boolean;
+}[] = [
+  {
+    kind: 'session',
+    retryable: true, // retryable, but the UI leads with Re-link
+    test: (m) =>
+      m.includes('no conversation found') ||
+      m.includes('session id') ||
+      m.includes('session not found'),
+  },
+  {
+    // Deliberately match the specific longer tokens, never a bare "auth" —
+    // "author"/"authority" and similar appear in unrelated infra messages.
+    // `401` and `login` are word-boundary-anchored so a port/line number like
+    // "24010" or a hostname like "mylogin.example.com" can't force a
+    // non-retryable auth verdict onto an otherwise retryable failure.
+    kind: 'auth',
+    retryable: false,
+    test: (m) =>
+      m.includes('authentication') ||
+      m.includes('unauthorized') ||
+      /\b401\b/.test(m) ||
+      /\blogin\b/.test(m) ||
+      m.includes('api key') ||
+      m.includes('credentials'),
+  },
+  {
+    kind: 'transient',
+    retryable: true,
+    test: (m) =>
+      m.includes('api error') ||
+      /\b(429|500|502|503|529)\b/.test(m) ||
+      m.includes('overloaded') ||
+      m.includes('timeout') ||
+      m.includes('network') ||
+      m.includes('rate limit') ||
+      m.includes('econn') ||
+      m.includes('thinking.type'),
+  },
+];
+
+/**
+ * Classify a failed @claude reply's error message to drive recovery UI.
+ * Matching is case-insensitive and ordered (specific kinds win over broad ones).
+ * Unmatched or empty input is `unknown` — deliberately retryable, since a wrong
+ * Retry only costs one re-run while a wrong Re-link misdirects the user.
+ */
+export function classifyReplyError(message: string): ReplyErrorClass {
+  const m = (message ?? '').toLowerCase();
+  for (const rule of REPLY_ERROR_RULES) {
+    if (rule.test(m)) return { retryable: rule.retryable, kind: rule.kind };
+  }
+  return { retryable: true, kind: 'unknown' };
+}
+
 /**
  * Split a raw Claude reply into the user-visible prose and the (optional)
  * quill-edits JSON. `visible` is everything before the fence (trimmed of the
@@ -70,6 +140,15 @@ export function splitVisible(raw: string): { visible: string; block: string | nu
 interface UseClaudeReplyReturn {
   ask: (comment: Comment, userText: string, binding: AISessionBinding) => Promise<void>;
   cancel: (replyId: string) => Promise<void>;
+  /** Re-issue the identical request for a failed reply, reusing its replyId. */
+  retry: (replyId: string) => Promise<void>;
+}
+
+/** The inputs a reply was asked with, stashed so a retry can re-issue them. */
+interface ReplyInputs {
+  comment: Comment;
+  userText: string;
+  binding: AISessionBinding;
 }
 
 interface CompactionInfo {
@@ -224,12 +303,54 @@ declare global {
   }
 }
 
+// Low-level dispatch to cancel a spawned reply by its token: routes to the e2e
+// mock when present, otherwise the Tauri command. Rejects (rather than throwing
+// synchronously) so every caller can settle it with its own error posture —
+// swallow for orphan cleanup, log for a user-initiated cancel.
+async function sendCancel(token: string): Promise<void> {
+  const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
+  if (mock) {
+    mock.cancel?.(token);
+    return;
+  }
+  await invoke('cancel_claude_resume', { cancelToken: token });
+}
+
 export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyReturn {
   const tokensRef = useRef<Map<string, string>>(new Map());
+  // Transient, in-memory only — NEVER persisted to the sidecar. Keyed by
+  // replyId so a retry can re-issue the exact same request.
+  const inputsRef = useRef<Map<string, ReplyInputs>>(new Map());
+  // Per-replyId generation counter. A retry reuses the same replyId, so a late
+  // event from the superseded original must not clobber the retried reply; each
+  // spawn captures its generation and drops events once it's no longer current.
+  const genRef = useRef<Map<string, number>>(new Map());
+  // Guards against a double-fire retry (e.g. an impatient double-click) while a
+  // retry for the same replyId is already being launched.
+  const retryingRef = useRef<Set<string>>(new Set());
 
-  const ask = useCallback(
-    async (comment: Comment, userText: string, binding: AISessionBinding) => {
-      const replyId = opts.startAIReply(comment.id);
+  // Best-effort cancel of a still-tracked spawn, e.g. when a stale generation
+  // terminates or a retry supersedes a slow original. Never throws into a
+  // stream handler.
+  const orphanCancel = useCallback((replyId: string) => {
+    const token = tokensRef.current.get(replyId);
+    if (!token) return;
+    tokensRef.current.delete(replyId);
+    void sendCancel(token).catch(() => {
+      // ignore — the child may already be gone
+    });
+  }, []);
+
+  // Shared spawn/stream core for both the first ask and a retry. `replyId` is
+  // already reset to a pending state by the caller (startAIReply / retryAIReply).
+  const runSpawn = useCallback(
+    async (replyId: string, comment: Comment, userText: string, binding: AISessionBinding) => {
+      // Claim the next generation for this replyId. Any spawn still streaming
+      // under an earlier generation is now stale and its events are dropped.
+      const generation = (genRef.current.get(replyId) ?? 0) + 1;
+      genRef.current.set(replyId, generation);
+      const isCurrent = () => genRef.current.get(replyId) === generation;
+
       const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
 
       // A Quill-minted session never authored the doc, so the compaction
@@ -346,7 +467,22 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
         }
       };
 
+      // This spawn's own cancel token, captured as soon as the spawn returns it.
+      // The dispatch closure cancels/untracks by THIS token, never by replyId —
+      // after a retry the replyId points at the newer spawn, so a stale event
+      // resolving orphanCancel(replyId) would tear down the live retry instead.
+      let spawnToken: string | undefined;
+
       const dispatch = (msg: ChunkEvent) => {
+        // A superseded spawn (a slower original that a retry replaced) must not
+        // mutate the reply the newer generation now owns. Drop its events; on a
+        // terminal event, tear down THIS orphaned child by its own token.
+        if (!isCurrent()) {
+          if (msg.kind === 'done' || msg.kind === 'cancelled' || msg.kind === 'error') {
+            if (spawnToken !== undefined) void sendCancel(spawnToken).catch(() => {});
+          }
+          return;
+        }
         if (msg.kind === 'delta') {
           rawAccum += msg.text;
           emitVisible(false);
@@ -354,15 +490,17 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           emitVisible(true);
           finalize();
           opts.finishAIReply(comment.id, replyId);
-          tokensRef.current.delete(replyId);
+          if (tokensRef.current.get(replyId) === spawnToken) tokensRef.current.delete(replyId);
+          inputsRef.current.delete(replyId);
         } else if (msg.kind === 'error') {
           opts.failAIReply(comment.id, replyId, msg.message);
-          tokensRef.current.delete(replyId);
+          if (tokensRef.current.get(replyId) === spawnToken) tokensRef.current.delete(replyId);
+          // Keep the stashed inputs — a retry needs them.
         }
       };
 
       if (mock) {
-        const token = mock.spawn(
+        spawnToken = mock.spawn(
           {
             sessionId: binding.sessionId,
             cwd: binding.cwd,
@@ -372,7 +510,7 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           },
           dispatch,
         );
-        tokensRef.current.set(replyId, token);
+        tokensRef.current.set(replyId, spawnToken);
         return;
       }
 
@@ -388,28 +526,62 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           allowCreate: fresh,
           onEvent: channel,
         });
+        spawnToken = cancelToken;
+        if (!isCurrent()) {
+          // A retry superseded this spawn while we awaited — cancel the orphan
+          // rather than tracking it against a replyId the newer generation owns.
+          // Route through sendCancel so the e2e mock's cancel fires too (a raw
+          // invoke would skip it and leak the orphan in mock-driven tests).
+          void sendCancel(cancelToken).catch(() => {});
+          return;
+        }
         tokensRef.current.set(replyId, cancelToken);
       } catch (e) {
-        opts.failAIReply(comment.id, replyId, String(e));
+        if (isCurrent()) opts.failAIReply(comment.id, replyId, String(e));
       }
     },
     [opts],
   );
 
+  const ask = useCallback(
+    async (comment: Comment, userText: string, binding: AISessionBinding) => {
+      const replyId = opts.startAIReply(comment.id);
+      inputsRef.current.set(replyId, { comment, userText, binding });
+      await runSpawn(replyId, comment, userText, binding);
+    },
+    [opts, runSpawn],
+  );
+
+  const retry = useCallback(
+    async (replyId: string) => {
+      if (retryingRef.current.has(replyId)) return; // double-fire guard
+      const inputs = inputsRef.current.get(replyId);
+      if (!inputs) return; // nothing to re-issue (no-op, no throw)
+      retryingRef.current.add(replyId);
+      try {
+        // Tear down any orphan the failed original may have left tracked, then
+        // reset the reply in place (reuses the same entry, clears the error).
+        orphanCancel(replyId);
+        opts.retryAIReply(inputs.comment.id, replyId);
+        // Re-issue the identical request against the same comment. Ranges are
+        // re-read live inside runSpawn via opts.getRangeTexts.
+        await runSpawn(replyId, inputs.comment, inputs.userText, inputs.binding);
+      } finally {
+        retryingRef.current.delete(replyId);
+      }
+    },
+    [opts, runSpawn, orphanCancel],
+  );
+
   const cancel = useCallback(async (replyId: string) => {
     const token = tokensRef.current.get(replyId);
     if (!token) return;
-    const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
-    if (mock) {
-      mock.cancel?.(token);
-      return;
-    }
     try {
-      await invoke('cancel_claude_resume', { cancelToken: token });
+      await sendCancel(token);
     } catch (e) {
       console.error('Failed to cancel claude reply:', e);
     }
   }, []);
 
-  return { ask, cancel };
+  return { ask, cancel, retry };
 }

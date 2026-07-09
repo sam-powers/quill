@@ -1596,6 +1596,11 @@ del.track-delete {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.comment-reply-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
 
 /* ── Footer bindings (Claude session / reference folder) ───────── */
 .footer-ai-binding,

@@ -172,4 +172,57 @@ describe('useComments', () => {
       expect(result.current.comments).toHaveLength(1);
     });
   });
+
+  describe('retryAIReply', () => {
+    // Set up a comment carrying a single failed AI reply, returning both ids.
+    function withFailedReply() {
+      const { result } = renderHook(() => useComments());
+      let commentId = '';
+      let replyId = '';
+      act(() => {
+        commentId = result.current.addComment('text', 0, 4, 'Alice').id;
+      });
+      act(() => {
+        replyId = result.current.startAIReply(commentId);
+      });
+      act(() => {
+        result.current.appendAIReplyChunk(commentId, replyId, 'partial answer');
+      });
+      act(() => {
+        result.current.failAIReply(commentId, replyId, 'API Error: overloaded');
+      });
+      return { result, commentId, replyId };
+    }
+
+    it('resets the same reply to a pending state without appending a new one', () => {
+      const { result, commentId, replyId } = withFailedReply();
+      expect(result.current.comments[0].replies).toHaveLength(1);
+      expect(result.current.comments[0].replies[0].error).toBe('API Error: overloaded');
+
+      act(() => {
+        result.current.retryAIReply(commentId, replyId);
+      });
+
+      const replies = result.current.comments[0].replies;
+      expect(replies).toHaveLength(1); // reused, not appended
+      const r = replies[0];
+      expect(r.id).toBe(replyId); // id is stable
+      expect(r.pending).toBe(true);
+      expect(r.error).toBeUndefined();
+      expect(r.text).toBe(''); // streamed text cleared
+      expect(r.authorKind).toBe('ai');
+    });
+
+    it('is a no-op for an unknown replyId', () => {
+      const { result, commentId } = withFailedReply();
+      const before = result.current.comments[0].replies[0];
+
+      act(() => {
+        result.current.retryAIReply(commentId, 'nonexistent-reply');
+      });
+
+      expect(result.current.comments[0].replies).toHaveLength(1);
+      expect(result.current.comments[0].replies[0]).toEqual(before);
+    });
+  });
 });

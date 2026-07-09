@@ -16,13 +16,23 @@ type MockScriptStep =
   | { kind: 'cancelled' }
   | { kind: 'pause' }; // hold open until cancel
 
-async function setupWithMock(
+// Installs a mock that plays a DIFFERENT script for each successive spawn. The
+// Nth spawn (0-indexed) plays scripts[N]; once past the end, the last script
+// repeats. This lets a test drive an error-then-success retry flow: the first
+// spawn fails, the retry (a second spawn) succeeds.
+async function setupWithMockScripts(
   page: Page,
-  script: MockScriptStep[],
+  scripts: MockScriptStep[][],
   sessionOverrides: Record<string, unknown> = {},
 ): Promise<void> {
   await page.addInitScript(
-    ({ steps, overrides }: { steps: MockScriptStep[]; overrides: Record<string, unknown> }) => {
+    ({
+      scriptList,
+      overrides,
+    }: {
+      scriptList: MockScriptStep[][];
+      overrides: Record<string, unknown>;
+    }) => {
       type Ev =
         | { kind: 'delta'; text: string }
         | { kind: 'done' }
@@ -30,6 +40,7 @@ async function setupWithMock(
         | { kind: 'cancelled' };
 
       let nextTokenId = 0;
+      let spawnIndex = 0;
       const pending = new Map<string, () => void>(); // token → cancel resolver
 
       (window as unknown as { __quillTestSession: unknown }).__quillTestSession = {
@@ -44,6 +55,8 @@ async function setupWithMock(
         spawn: (args: unknown, onEvent: (e: Ev) => void) => {
           // Exposed so tests can assert on what the app would send the backend.
           (window as unknown as { __lastSpawnArgs: unknown }).__lastSpawnArgs = args;
+          const steps = scriptList[Math.min(spawnIndex, scriptList.length - 1)];
+          spawnIndex++;
           const token = `mock-${++nextTokenId}`;
           let cancelled = false;
           pending.set(token, () => {
@@ -75,7 +88,7 @@ async function setupWithMock(
         },
       };
     },
-    { steps: script, overrides: sessionOverrides },
+    { scriptList: scripts, overrides: sessionOverrides },
   );
 
   await page.goto('/');
@@ -83,6 +96,15 @@ async function setupWithMock(
   await editor.waitFor({ timeout: 5000 });
   await editor.click();
   await page.waitForTimeout(100);
+}
+
+// The common case: one script replayed for every spawn.
+async function setupWithMock(
+  page: Page,
+  script: MockScriptStep[],
+  sessionOverrides: Record<string, unknown> = {},
+): Promise<void> {
+  await setupWithMockScripts(page, [script], sessionOverrides);
 }
 
 async function addCommentWithAIReply(page: Page, anchor: string, replyText: string) {
@@ -228,22 +250,67 @@ test('AI reply: a Quill-created binding spawns with allowCreate', async ({ page 
   expect(prompt).toContain('Here is the full current document:');
 });
 
-test('AI reply: pending → error shows Re-link button', async ({ page }) => {
+test('AI reply: a session-loss error shows Re-link primary plus a secondary Retry', async ({
+  page,
+}) => {
+  // "session not found" classifies as kind:'session' → Re-link is the primary
+  // affordance, and because a session error is still retryable a secondary
+  // Retry is offered too.
   await setupWithMock(page, [
     { kind: 'delta', text: 'partial...' },
-    { kind: 'error', message: 'Session no longer available' },
+    { kind: 'error', message: 'session not found' },
   ]);
 
   await addCommentWithAIReply(page, 'hello world', '@claude help');
 
   const aiReply = page.locator('.comment-reply-ai').first();
   await expect(aiReply).toBeVisible({ timeout: 2000 });
-  await expect(aiReply.locator('.comment-reply-error')).toContainText(
-    'Session no longer available',
-    { timeout: 3000 },
-  );
+  await expect(aiReply.locator('.comment-reply-error')).toContainText('session not found', {
+    timeout: 3000,
+  });
   await expect(aiReply.getByRole('button', { name: /Re-link session/i })).toBeVisible();
+  await expect(aiReply.getByRole('button', { name: /^Retry$/i })).toBeVisible();
   await expect(aiReply.locator('.ai-spinner')).toHaveCount(0);
+});
+
+test('AI reply: a transient error shows Retry (no Re-link) and retry succeeds in place', async ({
+  page,
+}) => {
+  // First spawn fails with a transient API error; the failed reply offers a
+  // primary Retry and no Re-link. Clicking Retry re-issues the identical
+  // request against the SAME reply entry, which the second script completes.
+  await setupWithMockScripts(page, [
+    [
+      { kind: 'delta', text: 'partial...' },
+      { kind: 'error', message: 'API Error: overloaded' },
+    ],
+    [{ kind: 'delta', text: 'Second time worked.' }, { kind: 'done' }],
+  ]);
+
+  await addCommentWithAIReply(page, 'hello world', '@claude help');
+
+  const aiReply = page.locator('.comment-reply-ai').first();
+  await expect(aiReply).toBeVisible({ timeout: 2000 });
+  await expect(aiReply.locator('.comment-reply-error')).toContainText('API Error: overloaded', {
+    timeout: 3000,
+  });
+  // Transient → Retry is the primary action; Re-link is demoted to a ghost
+  // secondary rather than hidden.
+  const retryBtn = aiReply.getByRole('button', { name: /^Retry$/i });
+  await expect(retryBtn).toBeVisible();
+  await expect(retryBtn).toHaveClass(/btn-primary/);
+  await expect(aiReply.getByRole('button', { name: /Re-link session/i })).toHaveClass(/btn-ghost/);
+
+  await retryBtn.click();
+
+  // Same reply entry recovers: error clears and the second script's text lands.
+  await expect(aiReply.locator('.comment-reply-text')).toContainText('Second time worked.', {
+    timeout: 3000,
+  });
+  await expect(aiReply.locator('.comment-reply-error')).toHaveCount(0);
+  await expect(aiReply.locator('.ai-spinner')).toHaveCount(0);
+  // Exactly one AI reply — retry reused the entry, it did not append a new one.
+  await expect(page.locator('.comment-reply-ai')).toHaveCount(1);
 });
 
 // Selects the first `count` characters of the current line (from its start),
