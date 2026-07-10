@@ -12,9 +12,12 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
+import { invoke } from '@tauri-apps/api/core';
 import { useClaudeReply } from '../../hooks/useClaudeReply';
 import type { ChunkEvent, RangeTexts } from '../../hooks/useClaudeReply';
 import type { AISessionBinding, Comment, EditScope, QuillEdit } from '../../types';
+
+const invokeMock = vi.mocked(invoke);
 
 const BINDING: AISessionBinding = {
   provider: 'claude-code',
@@ -70,6 +73,7 @@ function makeOpts(mock: MockClaude) {
   const appendAIReplyChunk = vi.fn();
   const finishAIReply = vi.fn();
   const failAIReply = vi.fn();
+  const cancelAIReply = vi.fn();
   const retryAIReply = vi.fn();
   const getDocMarkdown = vi.fn(() => 'doc body');
   const getRangeTexts = vi.fn(
@@ -86,13 +90,21 @@ function makeOpts(mock: MockClaude) {
       appendAIReplyChunk,
       finishAIReply,
       failAIReply,
+      cancelAIReply,
       retryAIReply,
       getDocMarkdown,
       getRangeTexts,
       applyTrackedEdits,
       getContextFolder,
     },
-    spies: { startAIReply, appendAIReplyChunk, finishAIReply, failAIReply, retryAIReply },
+    spies: {
+      startAIReply,
+      appendAIReplyChunk,
+      finishAIReply,
+      failAIReply,
+      cancelAIReply,
+      retryAIReply,
+    },
     mock,
   };
 }
@@ -182,5 +194,160 @@ describe('useClaudeReply generation guard (retry vs. slow original)', () => {
     });
     expect(spies.retryAIReply).not.toHaveBeenCalled();
     expect(mock.dispatchers.size).toBe(0);
+  });
+});
+
+describe('useClaudeReply cancel → re-run', () => {
+  let mock: MockClaude;
+
+  beforeEach(() => {
+    mock = new MockClaude();
+    mock.install();
+  });
+
+  afterEach(() => {
+    delete window.__quillMock;
+    delete window.__quillTestSession;
+    vi.clearAllMocks();
+  });
+
+  it('marks a cancelled reply neutral (not finished/errored) and keeps its inputs', async () => {
+    const { opts, spies } = makeOpts(mock);
+    const { result } = renderHook(() => useClaudeReply(opts));
+    const comment = makeComment();
+
+    await act(async () => {
+      await result.current.ask(comment, 'fix this', BINDING);
+    });
+    // A little prose streams in before the user stops it.
+    act(() => {
+      mock.emit('tok-1', { kind: 'delta', text: 'half a rewri' });
+    });
+
+    // Backend confirms the stop by emitting `cancelled`.
+    act(() => {
+      mock.emit('tok-1', { kind: 'cancelled' });
+    });
+
+    // Cancelled is its own neutral terminal state: NOT a completion and NOT an
+    // error. A half-streamed reply must not finalize (which would apply partial
+    // edits) or masquerade as a finished answer.
+    expect(spies.cancelAIReply).toHaveBeenCalledWith('c1', 'r0');
+    expect(spies.finishAIReply).not.toHaveBeenCalled();
+    expect(spies.failAIReply).not.toHaveBeenCalled();
+    expect(opts.applyTrackedEdits).not.toHaveBeenCalled();
+  });
+
+  it('re-runs a cancelled reply in place against the same replyId', async () => {
+    const { opts, spies } = makeOpts(mock);
+    const { result } = renderHook(() => useClaudeReply(opts));
+    const comment = makeComment();
+
+    await act(async () => {
+      await result.current.ask(comment, 'fix this', BINDING);
+    });
+    act(() => {
+      mock.emit('tok-1', { kind: 'cancelled' });
+    });
+    expect(spies.cancelAIReply).toHaveBeenCalledWith('c1', 'r0');
+
+    // The user hits Re-run: the stashed inputs survived the cancel, so a fresh
+    // spawn re-issues the identical request against the same reply entry.
+    await act(async () => {
+      await result.current.retry('r0');
+    });
+    expect(spies.retryAIReply).toHaveBeenCalledWith('c1', 'r0');
+    expect(mock.dispatchers.has('tok-2')).toBe(true);
+
+    // The re-run completes and finishes the reply normally.
+    act(() => {
+      mock.emit('tok-2', { kind: 'delta', text: 'a clean rewrite' });
+      mock.emit('tok-2', { kind: 'done' });
+    });
+    expect(spies.finishAIReply).toHaveBeenCalledWith('c1', 'r0');
+  });
+
+  it("drops a superseded cancel event from a re-run's slow original", async () => {
+    const { opts, spies } = makeOpts(mock);
+    const { result } = renderHook(() => useClaudeReply(opts));
+    const comment = makeComment();
+
+    // Ask, then re-run *before* the first spawn ever reports cancelled — the
+    // original (tok-1) is now stale, superseded by tok-2.
+    await act(async () => {
+      await result.current.ask(comment, 'fix this', BINDING);
+    });
+    act(() => {
+      mock.emit('tok-1', { kind: 'cancelled' });
+    });
+    await act(async () => {
+      await result.current.retry('r0');
+    });
+    spies.cancelAIReply.mockClear();
+
+    // A late `cancelled` from the superseded original must NOT re-cancel the
+    // reply the re-run now owns; it orphan-cancels tok-1 instead.
+    act(() => {
+      mock.emit('tok-1', { kind: 'cancelled' });
+    });
+    expect(spies.cancelAIReply).not.toHaveBeenCalled();
+    expect(mock.cancelled).toContain('tok-1');
+  });
+});
+
+// The single-reply cancel path has one window the __quillMock can't model: the
+// mock's spawn returns synchronously, but the real code awaits
+// spawn_claude_resume. A Cancel click can land in that gap, before any token is
+// tracked. Drive the real invoke path (no __quillMock) with a deferred spawn to
+// exercise it.
+describe('useClaudeReply cancel during the spawn-await window', () => {
+  afterEach(() => {
+    delete window.__quillTestSession;
+    vi.clearAllMocks();
+  });
+
+  it('cancels synchronously and orphan-cancels the child once the slow spawn resolves', async () => {
+    // Hold spawn_claude_resume open so a Cancel can land before it returns a
+    // token. Route the other IPC calls to harmless resolutions.
+    let resolveSpawn: (token: string) => void = () => {};
+    const spawnPending = new Promise<string>((res) => {
+      resolveSpawn = res;
+    });
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === 'check_session_compacted') return Promise.resolve({ compacted: false });
+      if (cmd === 'spawn_claude_resume') return spawnPending;
+      if (cmd === 'cancel_claude_resume') return Promise.resolve(undefined);
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+
+    const { opts, spies } = makeOpts(new MockClaude());
+    const { result } = renderHook(() => useClaudeReply(opts));
+    const comment = makeComment();
+
+    // Fire the ask but DON'T await it — runSpawn is now parked awaiting the
+    // deferred spawn, before any token is tracked.
+    let askDone!: Promise<void>;
+    act(() => {
+      askDone = result.current.ask(comment, 'fix this', BINDING);
+    });
+    expect(spies.startAIReply).toHaveBeenCalled();
+
+    // The user hits Cancel mid-spawn — somewhere in the async prelude
+    // (compaction check → spawn await), before any token is tracked. The reply
+    // must still be marked cancelled: it can't just early-return and stream on.
+    await act(async () => {
+      await result.current.cancel('r0');
+    });
+    expect(spies.cancelAIReply).toHaveBeenCalledWith('c1', 'r0');
+
+    // The spawn finally resolves. runSpawn's post-await isCurrent() is now false
+    // (cancel bumped the generation), so it tears down its own orphaned child
+    // via cancel_claude_resume rather than tracking it — and never finishes.
+    await act(async () => {
+      resolveSpawn('late-token');
+      await askDone;
+    });
+    expect(invokeMock).toHaveBeenCalledWith('cancel_claude_resume', { cancelToken: 'late-token' });
+    expect(spies.finishAIReply).not.toHaveBeenCalled();
   });
 });

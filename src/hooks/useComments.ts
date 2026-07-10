@@ -14,6 +14,7 @@ interface UseCommentsReturn {
   appendAIReplyChunk: (commentId: string, replyId: string, chunk: string) => void;
   finishAIReply: (commentId: string, replyId: string) => void;
   failAIReply: (commentId: string, replyId: string, message: string) => void;
+  cancelAIReply: (commentId: string, replyId: string) => void;
   retryAIReply: (commentId: string, replyId: string) => void;
 }
 
@@ -122,9 +123,30 @@ export function useComments(): UseCommentsReturn {
     );
   }, []);
 
-  // Reset an existing (errored) AI reply in place so a retry reuses the same
-  // entry rather than appending a new one — clears the error, resets the
-  // streamed text, and marks it pending again. Unknown ids are a no-op.
+  // Mark an in-flight AI reply as user-cancelled: a neutral, retryable terminal
+  // state (distinct from an error). Clears the partial streamed text so an
+  // aborted reply doesn't masquerade as a finished answer, and drops `pending`
+  // so the spinner/Cancel affordance gives way to a Re-run. Unknown ids no-op.
+  const cancelAIReply = useCallback((commentId: string, replyId: string) => {
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              replies: c.replies.map((r) =>
+                r.id === replyId
+                  ? { ...r, pending: false, cancelled: true, error: undefined, text: '' }
+                  : r,
+              ),
+            }
+          : c,
+      ),
+    );
+  }, []);
+
+  // Reset an existing (errored or cancelled) AI reply in place so a retry reuses
+  // the same entry rather than appending a new one — clears error/cancelled
+  // flags, resets the streamed text, and marks it pending again. Unknown ids no-op.
   const retryAIReply = useCallback((commentId: string, replyId: string) => {
     setComments((prev) =>
       prev.map((c) =>
@@ -132,7 +154,9 @@ export function useComments(): UseCommentsReturn {
           ? {
               ...c,
               replies: c.replies.map((r) =>
-                r.id === replyId ? { ...r, pending: true, error: undefined, text: '' } : r,
+                r.id === replyId
+                  ? { ...r, pending: true, error: undefined, cancelled: undefined, text: '' }
+                  : r,
               ),
             }
           : c,
@@ -152,6 +176,7 @@ export function useComments(): UseCommentsReturn {
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
+    cancelAIReply,
     retryAIReply,
   };
 }

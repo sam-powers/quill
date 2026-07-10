@@ -117,28 +117,10 @@ describe('buildPrompt thread handling', () => {
   });
 });
 
-describe('buildPrompt fresh session', () => {
-  it('claims prior authorship by default', () => {
+describe('buildPrompt authorship framing', () => {
+  it('frames the doc as one Claude previously authored', () => {
     const prompt = buildPrompt(makeComment([]), 'question', 'doc', RANGES, 'highlight', null, null);
     expect(prompt).toContain('you previously authored');
-  });
-
-  it('never claims authorship for a Quill-created session and sends the full doc plainly', () => {
-    const prompt = buildPrompt(
-      makeComment([]),
-      'question',
-      'doc body',
-      RANGES,
-      'highlight',
-      null,
-      null,
-      true,
-    );
-    expect(prompt).not.toContain('previously authored');
-    expect(prompt).not.toContain('since you wrote');
-    expect(prompt).toContain('the user is editing in Quill');
-    expect(prompt).toContain('Here is the full current document:');
-    expect(prompt).toContain('doc body');
   });
 });
 

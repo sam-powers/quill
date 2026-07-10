@@ -1389,27 +1389,19 @@ fn spawn_claude_resume(
     cwd: String,
     prompt: String,
     add_dir: Option<String>,
-    allow_create: Option<bool>,
     on_event: Channel<ChunkEvent>,
 ) -> Result<String, String> {
     let claude_bin = resolve_claude_binary()?;
-    // Bindings created inside Quill ("Start new session") point at a session
-    // that doesn't exist until the first reply: create it under the binding's
-    // id with `--session-id`, then resume it like any other session afterwards.
-    // Without allow_create an unknown session still fails loudly via --resume.
-    let create_new = allow_create.unwrap_or(false) && find_session_jsonl(&session_id)?.is_none();
+    // Every binding points at an existing Claude Code session; resume it. An
+    // unknown session fails loudly via --resume.
     let mut cmd = Command::new(&claude_bin);
-    cmd.arg(if create_new {
-        "--session-id"
-    } else {
-        "--resume"
-    })
-    .arg(&session_id)
-    .arg("--print")
-    .arg("--output-format")
-    .arg("stream-json")
-    .arg("--include-partial-messages")
-    .arg("--verbose");
+    cmd.arg("--resume")
+        .arg(&session_id)
+        .arg("--print")
+        .arg("--output-format")
+        .arg("stream-json")
+        .arg("--include-partial-messages")
+        .arg("--verbose");
     // Grant read access to the document's linked context folder so Claude can
     // open the files named in the prompt's manifest.
     if let Some(dir) = add_dir.as_deref().filter(|d| !d.is_empty()) {

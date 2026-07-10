@@ -124,10 +124,12 @@ describe('sanitizeAISession', () => {
     expect(sanitizeAISession(valid)).toEqual(valid);
   });
 
-  it('preserves createdByQuill when true', () => {
-    expect(sanitizeAISession({ ...valid, createdByQuill: true })).toMatchObject({
-      createdByQuill: true,
-    });
+  it('drops a legacy createdByQuill flag, loading it as a plain binding', () => {
+    // Old sidecars minted a session via Quill and stamped createdByQuill.
+    // That path is gone; the field is ignored and the binding resumes normally.
+    const sanitized = sanitizeAISession({ ...valid, createdByQuill: true });
+    expect(sanitized).toEqual(valid);
+    expect(sanitized).not.toHaveProperty('createdByQuill');
   });
 
   it('rejects a binding with the wrong provider', () => {

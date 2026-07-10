@@ -6,6 +6,10 @@ export interface Reply {
   authorKind?: 'user' | 'ai';
   pending?: boolean;
   error?: string;
+  /** User stopped this @claude reply before it finished — a neutral, retryable
+   * terminal state (distinct from `error`), offering a Re-run rather than an
+   * error recovery. Transient/UI-only; never persisted to the sidecar. */
+  cancelled?: boolean;
 }
 
 export interface AISessionBinding {
@@ -13,13 +17,6 @@ export interface AISessionBinding {
   sessionId: string;
   cwd: string;
   linkedAt: string;
-  /**
-   * True when Quill minted this binding itself ("Start new session" in the
-   * picker) instead of linking an existing authoring session. The session is
-   * created on first @claude contact, and prompts never claim Claude authored
-   * the document.
-   */
-  createdByQuill?: boolean;
 }
 
 export interface Comment {

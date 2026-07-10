@@ -94,6 +94,13 @@ function ReplyView({
           <p>{reply.error}</p>
           <ReplyErrorActions message={reply.error} onRetry={onRetry} onRelink={onRelink} />
         </div>
+      ) : reply.cancelled ? (
+        <div className="comment-reply-cancelled">
+          <p>Reply stopped.</p>
+          <button className="btn-primary" onClick={onRetry}>
+            Re-run
+          </button>
+        </div>
       ) : (
         <>
           <p className="comment-reply-text">

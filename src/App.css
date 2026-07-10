@@ -629,6 +629,15 @@ body,
   gap: var(--editor-scroll-gap);
 }
 
+/* Extends the scroll range so a comment/suggestion card anchored near the end
+   of the document can be scrolled fully into view (sized dynamically in App;
+   only present when > 0). flex-shrink: 0 so the flex column honors its height. */
+.editor-bottom-spacer {
+  flex-shrink: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
 /* ── Page surface ───────────────────────────────────────────────── */
 .editor-page {
   width: var(--page-max-width);
@@ -1601,6 +1610,22 @@ del.track-delete {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* User-cancelled reply: neutral (not an error), with a Re-run affordance. */
+.comment-reply-cancelled {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.comment-reply-cancelled p {
+  color: var(--color-ink-mid);
+  font-size: 12px;
+}
 
 /* ── Footer bindings (Claude session / reference folder) ───────── */
 .footer-ai-binding,
@@ -1867,6 +1892,7 @@ del.track-delete {
   .update-banner,
   .add-comment-btn,
   .add-comment-compose,
+  .editor-bottom-spacer,
   .app-modal-overlay {
     display: none !important;
   }

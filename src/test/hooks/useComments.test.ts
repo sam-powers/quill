@@ -225,4 +225,69 @@ describe('useComments', () => {
       expect(result.current.comments[0].replies[0]).toEqual(before);
     });
   });
+
+  describe('cancelAIReply', () => {
+    // A comment carrying a single in-flight (pending, partially streamed) AI reply.
+    function withPendingReply() {
+      const { result } = renderHook(() => useComments());
+      let commentId = '';
+      let replyId = '';
+      act(() => {
+        commentId = result.current.addComment('text', 0, 4, 'Alice').id;
+      });
+      act(() => {
+        replyId = result.current.startAIReply(commentId);
+      });
+      act(() => {
+        result.current.appendAIReplyChunk(commentId, replyId, 'half a rewri');
+      });
+      return { result, commentId, replyId };
+    }
+
+    it('marks the reply cancelled and neutral, clearing its partial text', () => {
+      const { result, commentId, replyId } = withPendingReply();
+
+      act(() => {
+        result.current.cancelAIReply(commentId, replyId);
+      });
+
+      const replies = result.current.comments[0].replies;
+      expect(replies).toHaveLength(1); // reused, not appended
+      const r = replies[0];
+      expect(r.id).toBe(replyId);
+      expect(r.cancelled).toBe(true);
+      expect(r.pending).toBe(false); // spinner/Cancel give way to Re-run
+      expect(r.error).toBeUndefined(); // neutral, not an error state
+      expect(r.text).toBe(''); // partial stream discarded
+    });
+
+    it('is cleared by a subsequent retry (re-run) so the reply streams fresh', () => {
+      const { result, commentId, replyId } = withPendingReply();
+
+      act(() => {
+        result.current.cancelAIReply(commentId, replyId);
+      });
+      act(() => {
+        result.current.retryAIReply(commentId, replyId);
+      });
+
+      const r = result.current.comments[0].replies[0];
+      expect(r.cancelled).toBeUndefined();
+      expect(r.pending).toBe(true);
+      expect(r.error).toBeUndefined();
+      expect(r.text).toBe('');
+    });
+
+    it('is a no-op for an unknown replyId', () => {
+      const { result, commentId } = withPendingReply();
+      const before = result.current.comments[0].replies[0];
+
+      act(() => {
+        result.current.cancelAIReply(commentId, 'nonexistent-reply');
+      });
+
+      expect(result.current.comments[0].replies).toHaveLength(1);
+      expect(result.current.comments[0].replies[0]).toEqual(before);
+    });
+  });
 });

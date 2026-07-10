@@ -88,14 +88,10 @@ export function buildReviewPrompt(
   options: ReviewOptions,
   docMarkdown: string,
   context: PromptContext | null,
-  freshSession = false,
 ): string {
   const guidance = options.guidance.trim();
   const head = [
-    // A session Quill minted for this doc never wrote it — don't claim it did.
-    freshSession
-      ? 'You are reviewing a markdown document the user is editing in Quill.'
-      : 'You are reviewing a markdown document you previously authored, now edited by the user in Quill.',
+    'You are reviewing a markdown document you previously authored, now edited by the user in Quill.',
     '',
     'The user asked for a review of the FULL document.',
     guidance
@@ -192,9 +188,16 @@ export function buildReviewPrompt(
 export function useDocumentReview(opts: UseDocumentReviewOptions): UseDocumentReviewReturn {
   const [phase, setPhase] = useState<ReviewPhase>({ status: 'idle' });
   const tokenRef = useRef<string | null>(null);
+  // Generation guard (mirrors useClaudeReply's single-reply path). Each start
+  // claims a generation; a cancel bumps it. Late events from a superseded run
+  // and spawns that resolve after a cancel are dropped/orphan-cancelled, so a
+  // user cancel supersedes any in-flight review regardless of backend timing.
+  const genRef = useRef(0);
 
   const start = useCallback(
     async (options: ReviewOptions, binding: AISessionBinding) => {
+      const generation = ++genRef.current;
+      const isCurrent = () => genRef.current === generation;
       setPhase({ status: 'streaming', text: '' });
       const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
 
@@ -216,14 +219,13 @@ export function useDocumentReview(opts: UseDocumentReviewOptions): UseDocumentRe
         context = { folder: contextFolder, files };
       }
 
+      // A cancel during the context scan supersedes this run — don't spawn a
+      // review the user already backed out of.
+      if (!isCurrent()) return;
+
       // A review always sends the full document, so the compaction check that
       // gates the comment-reply diff is irrelevant here.
-      const prompt = buildReviewPrompt(
-        options,
-        opts.getDocMarkdown(),
-        context,
-        binding.createdByQuill === true,
-      );
+      const prompt = buildReviewPrompt(options, opts.getDocMarkdown(), context);
 
       let rawAccum = '';
 
@@ -236,6 +238,10 @@ export function useDocumentReview(opts: UseDocumentReviewOptions): UseDocumentRe
       };
 
       const finalize = () => {
+        // Defense-in-depth: only reached via the already-guarded dispatch, but
+        // finalize applies irreversible document mutations — never from a
+        // superseded run.
+        if (!isCurrent()) return;
         tokenRef.current = null;
         let commentsAdded = 0;
         let suggestionsApplied = 0;
@@ -294,6 +300,8 @@ export function useDocumentReview(opts: UseDocumentReviewOptions): UseDocumentRe
       };
 
       const dispatch = (msg: ChunkEvent) => {
+        // Drop late delta/done/error/cancelled events from a superseded run.
+        if (!isCurrent()) return;
         if (msg.kind === 'delta') {
           rawAccum += msg.text;
           setPhase({ status: 'streaming', text: visibleNow(false) });
@@ -310,16 +318,17 @@ export function useDocumentReview(opts: UseDocumentReviewOptions): UseDocumentRe
       };
 
       if (mock) {
-        tokenRef.current = mock.spawn(
+        const token = mock.spawn(
           {
             sessionId: binding.sessionId,
             cwd: binding.cwd,
             prompt,
             addDir: contextFolder,
-            allowCreate: binding.createdByQuill === true,
           },
           dispatch,
         );
+        if (isCurrent()) tokenRef.current = token;
+        else mock.cancel?.(token);
         return;
       }
 
@@ -327,23 +336,31 @@ export function useDocumentReview(opts: UseDocumentReviewOptions): UseDocumentRe
       channel.onmessage = dispatch;
 
       try {
-        tokenRef.current = await invoke<string>('spawn_claude_resume', {
+        const token = await invoke<string>('spawn_claude_resume', {
           sessionId: binding.sessionId,
           cwd: binding.cwd,
           prompt,
           addDir: contextFolder,
-          allowCreate: binding.createdByQuill === true,
           onEvent: channel,
         });
+        // A cancel that landed during the spawn await orphaned this child —
+        // cancel it instead of registering its token.
+        if (isCurrent()) tokenRef.current = token;
+        else await invoke('cancel_claude_resume', { cancelToken: token });
       } catch (e) {
-        setPhase({ status: 'error', message: String(e) });
+        if (isCurrent()) setPhase({ status: 'error', message: String(e) });
       }
     },
     [opts],
   );
 
   const cancel = useCallback(async () => {
+    // Supersede any in-flight run and reset the UI synchronously — don't wait
+    // for a `cancelled` event that the backend may never emit.
+    genRef.current += 1;
     const token = tokenRef.current;
+    tokenRef.current = null;
+    setPhase({ status: 'idle' });
     if (!token) return;
     const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
     if (mock) {

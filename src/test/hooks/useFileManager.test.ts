@@ -218,6 +218,14 @@ describe('useFileManager', () => {
             authorKind: 'ai',
             error: 'API Error',
           },
+          {
+            id: 'a4',
+            author: 'Claude',
+            text: '',
+            createdAt: '',
+            authorKind: 'ai',
+            cancelled: true,
+          },
         ],
       };
       const { result } = renderHook(() => useFileManager());
@@ -237,7 +245,7 @@ describe('useFileManager', () => {
       );
       const written = JSON.parse((sidecarCall![1] as { content: string }).content);
       const persisted = written.comments[0].replies.map((r: Reply) => r.id);
-      expect(persisted).toEqual(['u1', 'a1']); // pending a2 + errored a3 dropped
+      expect(persisted).toEqual(['u1', 'a1']); // pending a2 + errored a3 + cancelled a4 dropped
     });
 
     it('does not clobber the sidecar on same-path save when it was corrupt on open', async () => {

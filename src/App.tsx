@@ -4,7 +4,7 @@ import QuillEditor from './components/Editor';
 import type { AnnotationClickInfo, EditorRef, SelectionInfo } from './components/Editor';
 import Toolbar from './components/Toolbar';
 import Footer from './components/Footer';
-import CommentLayer from './components/CommentLayer';
+import CommentLayer, { computeBottomSpacer } from './components/CommentLayer';
 import AddCommentButton from './components/AddCommentButton';
 import SessionPicker from './components/SessionPicker';
 import FindBar from './components/FindBar';
@@ -49,6 +49,10 @@ const CLAUDE_AUTHOR_ID = 'claude';
 
 const AUTHOR = 'Anonymous';
 
+// Breathing room (px) left above/below a card when it's scrolled into view, and
+// the extra scroll range the bottom spacer adds past the lowest card's bottom.
+const CARD_SCROLL_MARGIN = 24;
+
 export default function App() {
   const [editor, setEditor] = useState<TiptapEditor | null>(null);
   const editorRef = useRef<EditorRef>(null);
@@ -69,8 +73,13 @@ export default function App() {
   const commentLayerRef = useRef<HTMLDivElement>(null);
   const [editorKey] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [, setScrollTick] = useState(0);
+  const [scrollTick, setScrollTick] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  // Lowest comment/suggestion card bottom (document space), reported by
+  // CommentLayer. Drives `bottomSpacer` so a below-fold card can be scrolled
+  // fully into view (see the effect below).
+  const [maxCardBottom, setMaxCardBottom] = useState(0);
+  const [bottomSpacer, setBottomSpacer] = useState(0);
   const [findOpen, setFindOpen] = useState(false);
   // Whether a real native menu owns the file-operation accelerators. Defaults
   // to false so JS handles the shortcuts (dev server / e2e); flipped to true
@@ -148,6 +157,7 @@ export default function App() {
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
+    cancelAIReply,
     retryAIReply,
   } = useComments();
   const { suggestions, setSuggestions } = useSuggestions();
@@ -248,6 +258,7 @@ export default function App() {
     appendAIReplyChunk,
     finishAIReply,
     failAIReply,
+    cancelAIReply,
     retryAIReply,
     getDocMarkdown,
     getRangeTexts,
@@ -312,6 +323,22 @@ export default function App() {
     setScrollTop((el as HTMLElement).scrollTop);
     return () => el.removeEventListener('scroll', onScroll);
   }, [editor]);
+
+  // Size the bottom spacer so the lowest comment/suggestion card can be
+  // scrolled fully into view. The card column is overflow-hidden and its cards
+  // paint at `nudgedTop − scrollTop`, so a card whose bottom sits past the
+  // document's own content is unreachable without extra scroll range. We
+  // measure the scroll area's *natural* content height (scrollHeight minus the
+  // spacer we already added, so the spacer's own height doesn't feed back) and
+  // extend it just enough via `computeBottomSpacer`. A `prev === next` guard
+  // keeps this from looping. Normal docs get spacer 0 (no trailing dead space).
+  useEffect(() => {
+    const el = scrollAreaRef.current?.querySelector('.editor-scroll-area') as HTMLElement | null;
+    if (!el) return;
+    const baseContentHeight = el.scrollHeight - bottomSpacer;
+    const next = computeBottomSpacer(maxCardBottom, baseContentHeight, CARD_SCROLL_MARGIN);
+    setBottomSpacer((prev) => (prev === next ? prev : next));
+  }, [maxCardBottom, bottomSpacer, scrollTick, zoom, editor]);
 
   // Re-render once after a zoom change so the add-comment button re-reads
   // coordsAtPos: the render that applies the new zoom still measures the old
@@ -949,6 +976,38 @@ export default function App() {
     [unresolveComment, editor, comments],
   );
 
+  // Scroll the editor's scroll area so a comment/suggestion card is fully
+  // on-screen. The card lives in an overflow-hidden column translated by
+  // -scrollTop, so its `offsetTop` there equals its document-space top (same
+  // frame as scrollTop). The bottom spacer guarantees enough range exists for a
+  // below-fold card. Deferred by one rAF so the spacer effect has committed
+  // (it runs after this handler returns; scrolling synchronously would clamp
+  // against the pre-spacer range).
+  const scrollCardIntoView = useCallback((cardId: string) => {
+    requestAnimationFrame(() => {
+      const scrollArea = scrollAreaRef.current?.querySelector(
+        '.editor-scroll-area',
+      ) as HTMLElement | null;
+      const card = commentLayerRef.current?.querySelector(
+        `[data-card-id="${CSS.escape(cardId)}"]`,
+      ) as HTMLElement | null;
+      if (!scrollArea || !card) return;
+      const cardTop = card.offsetTop;
+      const cardBottom = cardTop + card.offsetHeight;
+      const viewTop = scrollArea.scrollTop;
+      const viewBottom = viewTop + scrollArea.clientHeight;
+      let nextTop = viewTop;
+      if (cardTop < viewTop + CARD_SCROLL_MARGIN) {
+        nextTop = cardTop - CARD_SCROLL_MARGIN;
+      } else if (cardBottom > viewBottom - CARD_SCROLL_MARGIN) {
+        nextTop = cardBottom + CARD_SCROLL_MARGIN - scrollArea.clientHeight;
+      }
+      if (nextTop !== viewTop) {
+        scrollArea.scrollTo({ top: Math.max(0, nextTop), behavior: 'smooth' });
+      }
+    });
+  }, []);
+
   const handleActivateComment = useCallback(
     (commentId: string) => {
       setActiveAnnotation((prev) =>
@@ -956,13 +1015,16 @@ export default function App() {
           ? null
           : { kind: 'comment', id: commentId },
       );
-      // Scroll the anchor into view
+      // Snap the anchor into range instantly (a smooth anchor scroll would
+      // fight the card's smooth scroll on the same container), then bring the
+      // full card on-screen.
       if (editor) {
         const dom = editor.view.dom.querySelector(`[data-comment-id="${commentId}"]`);
-        dom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        dom?.scrollIntoView({ behavior: 'instant', block: 'center' });
       }
+      scrollCardIntoView(commentId);
     },
-    [editor],
+    [editor, scrollCardIntoView],
   );
 
   const handleActivateSuggestion = useCallback(
@@ -977,11 +1039,12 @@ export default function App() {
         if (range) {
           const { node } = editor.view.domAtPos(range.from);
           const el = node instanceof HTMLElement ? node : node.parentElement;
-          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el?.scrollIntoView({ behavior: 'instant', block: 'center' });
         }
       }
+      scrollCardIntoView(id);
     },
-    [editor],
+    [editor, scrollCardIntoView],
   );
 
   const handleAIReplyRequest = useCallback(
@@ -1115,6 +1178,12 @@ export default function App() {
               onAnnotationClick={handleAnnotationClick}
             />
           </div>
+          {/* Extends the scroll range only when a low-anchored card would
+              otherwise be unreachable (see the spacer effect). Height 0 for
+              normal docs; hidden in print so it never affects PDF output. */}
+          {bottomSpacer > 0 && (
+            <div className="editor-bottom-spacer" style={{ height: bottomSpacer }} aria-hidden />
+          )}
         </div>
 
         {selectionInfo &&
@@ -1161,6 +1230,7 @@ export default function App() {
           onAcceptChange={handleAcceptChange}
           onRejectChange={handleRejectChange}
           onReviewDocument={handleReviewDocument}
+          onMaxCardBottomChange={setMaxCardBottom}
         />
       </div>
 
@@ -1188,7 +1258,6 @@ export default function App() {
           pendingReviewRef.current = false;
         }}
         onPick={handlePickSession}
-        newSessionCwd={filePath ? dirname(filePath) : null}
       />
 
       {reviewOpen && (

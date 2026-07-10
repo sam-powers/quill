@@ -216,40 +216,6 @@ test('AI reply: @claude in a reply with no linked session opens the session pick
   await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
 });
 
-test('Session picker: offers "Start new session", disabled until the doc is saved', async ({
-  page,
-}) => {
-  await setupWithoutSession(page);
-  await addCommentTaggingClaude(page, 'hello world', '@claude take a look');
-
-  await expect(page.locator('.session-picker')).toBeVisible({ timeout: 2000 });
-  // In the browser the document has no file path yet, so the button renders
-  // but stays disabled — the new session needs the doc's folder as its cwd.
-  const startNew = page.locator('.session-picker-new');
-  await expect(startNew).toBeVisible();
-  await expect(startNew).toBeDisabled();
-});
-
-test('AI reply: a Quill-created binding spawns with allowCreate', async ({ page }) => {
-  await setupWithMock(page, [{ kind: 'delta', text: 'Hi!' }, { kind: 'done' }], {
-    createdByQuill: true,
-  });
-
-  await addCommentTaggingClaude(page, 'hello world', '@claude introduce yourself');
-
-  const aiReply = page.locator('.comment-reply-ai').first();
-  await expect(aiReply.locator('.comment-reply-text')).toContainText('Hi!', { timeout: 3000 });
-
-  const args = await page.evaluate(
-    () => (window as unknown as { __lastSpawnArgs: unknown }).__lastSpawnArgs,
-  );
-  expect(args).toMatchObject({ sessionId: 'test-session-id', allowCreate: true });
-  // A fresh session never authored the doc — the prompt must not claim it did.
-  const prompt = (args as { prompt: string }).prompt;
-  expect(prompt).not.toContain('previously authored');
-  expect(prompt).toContain('Here is the full current document:');
-});
-
 test('AI reply: a session-loss error shows Re-link primary plus a secondary Retry', async ({
   page,
 }) => {
@@ -411,8 +377,14 @@ test('AI edits: "whole paragraph" widens scope beyond the highlight', async ({ p
   await expect(page.locator('.ProseMirror')).toContainText('GAMMA');
 });
 
-test('AI reply: pending → cancel resolves without leaving spinner', async ({ page }) => {
-  await setupWithMock(page, [{ kind: 'delta', text: 'starting...' }, { kind: 'pause' }]);
+test('AI reply: cancel resolves to a neutral Re-run, and Re-run succeeds in place', async ({
+  page,
+}) => {
+  // First spawn streams a little then parks; the second (post-Re-run) completes.
+  await setupWithMockScripts(page, [
+    [{ kind: 'delta', text: 'starting...' }, { kind: 'pause' }],
+    [{ kind: 'delta', text: 'Second time worked.' }, { kind: 'done' }],
+  ]);
 
   await addCommentWithAIReply(page, 'hello world', '@claude long task');
 
@@ -423,9 +395,25 @@ test('AI reply: pending → cancel resolves without leaving spinner', async ({ p
   });
   await expect(aiReply.locator('.btn-cancel-ai')).toBeVisible();
   await aiReply.locator('.btn-cancel-ai').click();
-  // Cancel transitions to finished: spinner & cancel button go away.
+
+  // Cancel is a neutral terminal state (not an error): spinner and Cancel go
+  // away, the partial text is discarded, and a Re-run button is offered.
   await expect(aiReply.locator('.ai-spinner')).toHaveCount(0, { timeout: 2000 });
   await expect(aiReply.locator('.btn-cancel-ai')).toHaveCount(0);
-  // Partial text retained.
-  await expect(aiReply.locator('.comment-reply-text')).toContainText('starting...');
+  await expect(aiReply.locator('.comment-reply-error')).toHaveCount(0);
+  const rerun = aiReply
+    .locator('.comment-reply-cancelled')
+    .getByRole('button', { name: /Re-run/i });
+  await expect(rerun).toBeVisible();
+
+  await rerun.click();
+
+  // Same reply entry recovers: the second script's text lands, cancelled UI gone.
+  await expect(aiReply.locator('.comment-reply-text')).toContainText('Second time worked.', {
+    timeout: 3000,
+  });
+  await expect(aiReply.locator('.comment-reply-cancelled')).toHaveCount(0);
+  await expect(aiReply.locator('.ai-spinner')).toHaveCount(0);
+  // Exactly one AI reply — Re-run reused the entry, it did not append a new one.
+  await expect(page.locator('.comment-reply-ai')).toHaveCount(1);
 });

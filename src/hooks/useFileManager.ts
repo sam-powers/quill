@@ -15,16 +15,17 @@ function emptySidecar(): SidecarFile {
 }
 
 /**
- * Drop transient AI-reply state before serialization. A pending or errored AI
- * reply is in-flight UI state — the request either never completed or failed —
- * so it must never reach the on-disk sidecar, where it would resurrect a stuck
- * spinner or a stale error on the next open. User replies and finished AI
- * replies are kept untouched. Returns a new array; inputs are not mutated.
+ * Drop transient AI-reply state before serialization. A pending, errored, or
+ * user-cancelled AI reply is in-flight UI state — the request either never
+ * completed, failed, or was stopped — so it must never reach the on-disk
+ * sidecar, where it would resurrect a stuck spinner, a stale error, or a
+ * dangling "Re-run" on the next open. User replies and finished AI replies are
+ * kept untouched. Returns a new array; inputs are not mutated.
  */
 export function stripTransientReplyState(comments: Comment[]): Comment[] {
   return comments.map((c) => {
     const kept = c.replies.filter(
-      (r) => !(r.authorKind === 'ai' && (r.pending || r.error !== undefined)),
+      (r) => !(r.authorKind === 'ai' && (r.pending || r.error !== undefined || r.cancelled)),
     );
     return kept.length === c.replies.length ? c : { ...c, replies: kept };
   });

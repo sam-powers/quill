@@ -27,6 +27,9 @@ interface CommentLayerProps {
   onAcceptChange: (id: string) => void;
   onRejectChange: (id: string) => void;
   onReviewDocument: () => void;
+  /** Lowest card bottom in document space (`nudgedTop + measuredHeight`), so
+   *  App can extend the scroll range to reach a below-fold card. 0 when empty. */
+  onMaxCardBottomChange: (maxBottom: number) => void;
 }
 
 interface CardPosition {
@@ -38,6 +41,22 @@ interface CardPosition {
 
 const CARD_HEIGHT_ESTIMATE = 120;
 const CARD_GAP = 8;
+
+/**
+ * Extra scrollable height the document needs so the lowest comment/suggestion
+ * card can be scrolled fully into view. Cards paint in the overflow-hidden
+ * margin column at `nudgedTop − scrollTop`; when a card's bottom sits past the
+ * document's own content, no scroll position reveals it. Returns 0 (never
+ * negative) when every card already fits, so ordinary docs get no dead space.
+ * Pure — exported for tests.
+ */
+export function computeBottomSpacer(
+  maxCardBottom: number,
+  baseContentHeight: number,
+  margin: number,
+): number {
+  return Math.max(0, Math.round(maxCardBottom + margin - baseContentHeight));
+}
 
 // One margin card's worth of pending change(s): a lone insert or delete, or
 // the two halves of a replacement, presented and resolved together. The
@@ -136,6 +155,7 @@ export default function CommentLayer({
   onAcceptChange,
   onRejectChange,
   onReviewDocument,
+  onMaxCardBottomChange,
 }: CommentLayerProps) {
   const [cardPositions, setCardPositions] = useState<CardPosition[]>([]);
   const rafRef = useRef<number>(0);
@@ -153,9 +173,11 @@ export default function CommentLayer({
   const editorRef = useRef(editor);
   const displayCommentsRef = useRef(displayComments);
   const suggestionGroupsRef = useRef(suggestionGroups);
+  const onMaxCardBottomChangeRef = useRef(onMaxCardBottomChange);
   editorRef.current = editor;
   displayCommentsRef.current = displayComments;
   suggestionGroupsRef.current = suggestionGroups;
+  onMaxCardBottomChangeRef.current = onMaxCardBottomChange;
 
   const reflow = useCallback(() => {
     const ed = editorRef.current;
@@ -186,8 +208,17 @@ export default function CommentLayer({
       });
     }
 
+    const heightFor = (id: string) => heightsRef.current.get(id) ?? CARD_HEIGHT_ESTIMATE;
+    const next = stackCards(rawCards, heightFor);
+
+    // Lowest card bottom in document space — what App needs to size the bottom
+    // spacer so a below-fold card can be scrolled into view. Both `nudgedTop`
+    // and the measured heights are scroll-independent, so reporting this can't
+    // feed a scroll→reflow loop.
+    const maxBottom = next.reduce((m, p) => Math.max(m, p.nudgedTop + heightFor(p.cardId)), 0);
+    onMaxCardBottomChangeRef.current(maxBottom);
+
     setCardPositions((prev) => {
-      const next = stackCards(rawCards, (id) => heightsRef.current.get(id) ?? CARD_HEIGHT_ESTIMATE);
       if (
         prev.length === next.length &&
         prev.every((p, i) => p.cardId === next[i].cardId && p.nudgedTop === next[i].nudgedTop)

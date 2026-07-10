@@ -19,6 +19,7 @@ interface UseClaudeReplyOptions {
   appendAIReplyChunk: (commentId: string, replyId: string, chunk: string) => void;
   finishAIReply: (commentId: string, replyId: string) => void;
   failAIReply: (commentId: string, replyId: string, message: string) => void;
+  cancelAIReply: (commentId: string, replyId: string) => void;
   retryAIReply: (commentId: string, replyId: string) => void;
   getDocMarkdown: () => string;
   /** Read the current document text for a comment's range + paragraph. */
@@ -187,7 +188,6 @@ export function buildPrompt(
   scope: EditScope,
   compaction: CompactionInfo | null,
   context: PromptContext | null,
-  freshSession = false,
 ): string {
   // `userText` is appended explicitly as the final line below. Depending on
   // when React flushed state, the same message may or may not already be the
@@ -204,10 +204,7 @@ export function buildPrompt(
   threadLines.push(`- User just said: ${userText}`);
 
   const head = [
-    // A session Quill minted for this doc never wrote it — don't claim it did.
-    freshSession
-      ? 'You are responding inline on a markdown document the user is editing in Quill.'
-      : 'You are responding inline on a markdown document you previously authored.',
+    'You are responding inline on a markdown document you previously authored.',
     '',
     'Comment thread so far:',
     threadLines.join('\n'),
@@ -268,11 +265,9 @@ export function buildPrompt(
     ...editProtocol,
     ...contextSection,
     '=== FULL DOCUMENT (context) ===',
-    freshSession
-      ? 'Here is the full current document:'
-      : compaction?.compacted
-        ? 'Your context was compacted since you wrote this; full current document follows:'
-        : 'Current document (may have been edited since you wrote it):',
+    compaction?.compacted
+      ? 'Your context was compacted since you wrote this; full current document follows:'
+      : 'Current document (may have been edited since you wrote it):',
     '---',
     docMarkdown,
     '---',
@@ -286,7 +281,6 @@ interface QuillMock {
       cwd: string;
       prompt: string;
       addDir: string | null;
-      allowCreate: boolean;
     },
     onEvent: (event: ChunkEvent) => void,
   ) => string; // returns cancel token
@@ -353,13 +347,8 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
 
       const mock = typeof window !== 'undefined' ? window.__quillMock : undefined;
 
-      // A Quill-minted session never authored the doc, so the compaction
-      // check is meaningless for it — worse, its own earlier replies could be
-      // mistaken for "the markdown it originally wrote" and produce a bogus
-      // diff. Always send such sessions the full document.
-      const fresh = binding.createdByQuill === true;
-      let compaction: CompactionInfo | null = fresh ? null : (mock?.compaction ?? null);
-      if (!mock && !fresh) {
+      let compaction: CompactionInfo | null = mock?.compaction ?? null;
+      if (!mock) {
         try {
           compaction = await invoke<CompactionInfo>('check_session_compacted', {
             sessionId: binding.sessionId,
@@ -396,7 +385,6 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
         scope,
         compaction,
         context,
-        fresh,
       );
 
       // Per-ask streaming state. We accumulate the raw text and only surface the
@@ -486,12 +474,19 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
         if (msg.kind === 'delta') {
           rawAccum += msg.text;
           emitVisible(false);
-        } else if (msg.kind === 'done' || msg.kind === 'cancelled') {
+        } else if (msg.kind === 'done') {
           emitVisible(true);
           finalize();
           opts.finishAIReply(comment.id, replyId);
           if (tokensRef.current.get(replyId) === spawnToken) tokensRef.current.delete(replyId);
           inputsRef.current.delete(replyId);
+        } else if (msg.kind === 'cancelled') {
+          // User stopped this reply. Do NOT finalize — a half-streamed reply
+          // must not apply partial tracked edits or masquerade as a finished
+          // answer. Mark it cancelled (a neutral, retryable state) and keep the
+          // stashed inputs so the Re-run button can re-issue the request.
+          opts.cancelAIReply(comment.id, replyId);
+          if (tokensRef.current.get(replyId) === spawnToken) tokensRef.current.delete(replyId);
         } else if (msg.kind === 'error') {
           opts.failAIReply(comment.id, replyId, msg.message);
           if (tokensRef.current.get(replyId) === spawnToken) tokensRef.current.delete(replyId);
@@ -506,7 +501,6 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
             cwd: binding.cwd,
             prompt,
             addDir: contextFolder,
-            allowCreate: fresh,
           },
           dispatch,
         );
@@ -523,7 +517,6 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
           cwd: binding.cwd,
           prompt,
           addDir: contextFolder,
-          allowCreate: fresh,
           onEvent: channel,
         });
         spawnToken = cancelToken;
@@ -573,15 +566,31 @@ export function useClaudeReply(opts: UseClaudeReplyOptions): UseClaudeReplyRetur
     [opts, runSpawn, orphanCancel],
   );
 
-  const cancel = useCallback(async (replyId: string) => {
-    const token = tokensRef.current.get(replyId);
-    if (!token) return;
-    try {
-      await sendCancel(token);
-    } catch (e) {
-      console.error('Failed to cancel claude reply:', e);
-    }
-  }, []);
+  const cancel = useCallback(
+    async (replyId: string) => {
+      // Supersede this reply synchronously — don't gate on a token that may not
+      // exist yet. A Cancel click can land while runSpawn is still awaiting
+      // spawn_claude_resume (no token tracked), or before the backend emits a
+      // `cancelled` event it may never send. Bumping the generation makes the
+      // pending runSpawn's post-await isCurrent() false, so it orphan-cancels
+      // its own child instead of streaming to completion.
+      genRef.current.set(replyId, (genRef.current.get(replyId) ?? 0) + 1);
+      const commentId = inputsRef.current.get(replyId)?.comment.id;
+      if (commentId) opts.cancelAIReply(commentId, replyId);
+
+      // If a token is already tracked, tear its child down now; the generation
+      // bump alone won't reach an in-flight child that has stopped checking.
+      const token = tokensRef.current.get(replyId);
+      if (!token) return;
+      tokensRef.current.delete(replyId);
+      try {
+        await sendCancel(token);
+      } catch (e) {
+        console.error('Failed to cancel claude reply:', e);
+      }
+    },
+    [opts],
+  );
 
   return { ask, cancel, retry };
 }

@@ -104,12 +104,9 @@ describe('buildReviewPrompt', () => {
     expect(prompt).toContain('tracked-change suggestions only');
   });
 
-  it('never claims authorship for a Quill-created session', () => {
-    const fresh = buildReviewPrompt(BOTH, 'doc', null, true);
-    expect(fresh).not.toContain('previously authored');
-    expect(fresh).toContain('the user is editing in Quill');
-    const linked = buildReviewPrompt(BOTH, 'doc', null, false);
-    expect(linked).toContain('previously authored');
+  it('frames the doc as one Claude previously authored', () => {
+    const prompt = buildReviewPrompt(BOTH, 'doc', null);
+    expect(prompt).toContain('previously authored');
   });
 
   it('lists the reference folder manifest when a context is provided', () => {
