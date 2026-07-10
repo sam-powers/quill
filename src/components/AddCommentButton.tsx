@@ -84,7 +84,7 @@ export default function AddCommentButton({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Add a comment… (Cmd+Enter to post)"
+          placeholder="Add a comment… (@claude to get an AI response)"
           rows={3}
           autoFocus
         />

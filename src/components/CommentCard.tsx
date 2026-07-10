@@ -168,7 +168,7 @@ export default function CommentCard({
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Reply… (type @claude to ask Claude)"
+            placeholder="Reply… (@claude to get an AI response)"
             rows={2}
             autoFocus
           />

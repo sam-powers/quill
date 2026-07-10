@@ -164,7 +164,10 @@
   --statusbar-height: 28px;
   --comment-panel-width: 260px;
   --page-max-width: 816px;
-  --page-padding-x: 96px;
+  /* 816 − 2×64 = 688px measure (~85 chars). Trim padding, not width, so the
+     page footprint is unchanged and can't force horizontal scroll against the
+     fixed comment column. Print block flattens this, so PDF stays US-Letter. */
+  --page-padding-x: 64px;
   --page-padding-y: 72px;
   --editor-scroll-gap: 40px;
 
@@ -1898,7 +1901,6 @@ del.track-delete {
   }
   .ProseMirror {
     min-height: 0 !important;
-    background-image: none !important;
     color: #000 !important;
   }
 
