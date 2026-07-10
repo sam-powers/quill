@@ -22,13 +22,20 @@ async function setup(page: Page) {
 }
 
 test('a comment on the last line of a tall document scrolls fully into view', async ({ page }) => {
+  // Belt-and-braces: document setup dominates this test's runtime, and under
+  // parallel-worker load the default 30s budget has been blown before the
+  // assertion ever ran.
+  test.setTimeout(60_000);
+
   const editor = await setup(page);
 
   // Fill well past one viewport so there IS empty space below the last card to
   // reproduce the bug — a short doc leaves viewport below the anchor already.
+  // insertText (one bulk insertion per paragraph) instead of keyboard.type:
+  // char-by-char typing of 60 paragraphs is what blew the test budget.
   const lines = 60;
   for (let i = 0; i < lines; i++) {
-    await page.keyboard.type(`Paragraph ${i} — some body text to give the document height.`);
+    await page.keyboard.insertText(`Paragraph ${i} — some body text to give the document height.`);
     if (i < lines - 1) await page.keyboard.press('Enter');
   }
   await page.waitForTimeout(100);
